@@ -1,6 +1,7 @@
 import messageService from "../services/messageService.js";
 import messageStorage from "../storage/messageStorage.js";
 import mediaService from "../services/mediaService.js";
+import { userStates, processFlowResponse, startFlow, menuFlows, ATENDENTES } from "../config/constants.js";
 
 export async function handleWebhook(req, res) {
   try {
@@ -39,16 +40,25 @@ export async function handleWebhook(req, res) {
       console.log(`🎯 BOTÃO CLICADO DETECTADO: ${buttonClicked}`);
       
       messageStorage.salvarMensagem(userPhone, `[BOTÃO: ${buttonClicked}]`, 'received', 'text');
-      
-      console.log(`🎯 Executando flow: ${buttonClicked}`);
-      const menuFlow = messageService.getMenuFlow(buttonClicked);
-      
-      if (menuFlow) {
-        await messageService.sendMessageWithButtons(userPhone, menuFlow);
-        console.log(`✅ Flow executado: ${buttonClicked}`);
+      if (buttonClicked === "delivery") {
+        console.log("🚚 INICIANDO FLUXO DE DELIVERY");
+        const currentState = userStates.get(userPhone) || { currentMenu: "menu" };
+        currentState.flow = startFlow("delivery");
+        userStates.set(userPhone, currentState);
+        await messageService.sendMessageWithButtons(userPhone, {
+          text: menuFlows.delivery.text
+        });
       } else {
-        console.log(`❌ Flow não encontrado: ${buttonClicked}`);
-        await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow('menu'));
+        console.log(`🎯 Executando flow: ${buttonClicked}`);
+        const menuFlow = messageService.getMenuFlow(buttonClicked);
+        
+        if (menuFlow) {
+          await messageService.sendMessageWithButtons(userPhone, menuFlow);
+          console.log(`✅ Flow executado: ${buttonClicked}`);
+        } else {
+          console.log(`❌ Flow não encontrado: ${buttonClicked}`);
+          await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow('menu'));
+        }
       }
       
       return res.status(200).json({ success: true });
@@ -116,11 +126,42 @@ export async function handleWebhook(req, res) {
         
         if (!messageService.isAtendente(userPhone)) {
           await messageService.enviarAlertaAtendente(userPhone, userMessage);
+          let currentState = userStates.get(userPhone) || { currentMenu: "menu" };
+          
+          if (currentState.flow) {
+            console.log(`🔄 Usuário ${userPhone} está no fluxo:`, currentState.flow.currentStep);
+            
+            const flowResult = processFlowResponse(userPhone, userMessage, currentState);
+            
+            if (flowResult) {
+              await messageService.sendMessageWithButtons(userPhone, {
+                text: flowResult.userResponse
+              });
+              if (flowResult.notifyAttendants && flowResult.complete) {
+                for (const atendente of ATENDENTES) {
+                  await messageService.sendMessageWithButtons(atendente, {
+                    text: flowResult.notifyAttendants
+                  }, true);
+                }
+              }
+              if (flowResult.resetFlow && flowResult.complete) {
+                currentState.flow = null;
+                currentState.flowData = null;
+                currentState.currentMenu = "menu";
+              }
+              
+              userStates.set(userPhone, currentState);
+              return res.status(200).json({ success: true });
+            }
+          }
           
           if (userMessage) {
             const flowToSend = messageService.processarMensagemCliente(userMessage);
             console.log(`🎯 Flow selecionado: ${flowToSend}`);
-            await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow(flowToSend));
+            
+            if (flowToSend) {
+              await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow(flowToSend));
+            }
           }
         }
       }
