@@ -211,24 +211,13 @@ class MessageService {
   processarMensagemCliente(userMessage) {
     let flowToSend = "menu";
     
-    if (userMessage.includes("atendente") || userMessage === "1") {
-      flowToSend = "atendente";
-    } else if (userMessage.includes("produto") || userMessage.includes("preço") || userMessage === "2") {
-      flowToSend = "produtos";
-    } else if (userMessage.includes("horário") || userMessage.includes("horario") || userMessage === "3") {
-      flowToSend = "horarios";
-    } else if (userMessage.includes("delivery") || userMessage.includes("entrega") || userMessage === "4") {
-      flowToSend = "delivery";
-    } else if (userMessage.includes("analgésico") || userMessage.includes("analgesico")) {
-      flowToSend = "analgesicos";
-    } else if (userMessage.includes("antialérgico") || userMessage.includes("antialergico")) {
-      flowToSend = "antialergicos";
-    } else if (userMessage.includes("anti-inflamatório") || userMessage.includes("antiinflamatorio")) {
-      flowToSend = "antiinflamatorios";
-    } else if (userMessage.includes("outro") || userMessage.includes("outros")) {
-      flowToSend = "outros";
-    } else if (userMessage.match(/^(oi|ola|olá|menu|voltar|inicio|start)$/)) {
+    const mensagem = userMessage.toLowerCase().trim();
+    
+    if (mensagem.match(/^(oi|ola|olá|menu|voltar|inicio|início|start|oie|iai|iae)$/)) {
       flowToSend = "menu";
+    }
+    else {
+      return null;
     }
 
     return flowToSend;

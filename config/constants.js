@@ -1,5 +1,6 @@
 export const UAZAPI_TOKEN = "ced89ac6-49ed-4360-a3ed-b06615d05612";
 export const UAZAPI_URL = "https://cerasos.uazapi.com";
+export const userStates = new Map();
 
 export const menuFlows = {
   "menu": {
@@ -77,7 +78,10 @@ export const menuFlows = {
 📍 Área de cobertura: Centro e bairros próximos
 💰 Taxa de entrega: Variável a depender da distância, consultar valor com atendente.
 
-📋 *Digite o nome do medicamento ou produto desejado*:`,
+📍 *Insira seu endereço neste modelo:*
+Rua/número/complemento
+Bairro`,
+    type: "delivery_step1"
   },
 
   "duvidasgerais": {
@@ -113,7 +117,6 @@ export const menuFlows = {
       "[⭐⭐⭐⭐⭐]",
       "Muito satisfeito"
     ]
-
   },
 
   "inatividade": {
@@ -125,9 +128,107 @@ export const menuFlows = {
 
     footerText: "📋 Se necessário, fique à vontade para realizar outro atendimento!",
   },
+};
 
+export const flowSteps = {
+  "delivery_step1": {
+    prompt: `📍 *Insira seu endereço neste modelo:*
+Rua/número/complemento
+Bairro`,
+    nextStep: "delivery_step2",
+    field: "endereco"
+  },
+  
+  "delivery_step2": {
+    prompt: "📋 *Por favor, mencione o produto ou medicamento desejado:*",
+    nextStep: "delivery_complete",
+    field: "produto"
+  },
+  
+  "delivery_complete": {
+    prompt: `✅ *Pedido de delivery registrado!* 🚚
+
+📍 *Endereço:* {endereco}
+📦 *Produto solicitado:* {produto}
+
+⏳ *Em breve um de nossos atendentes informará o valor do frete e disponibilidade do produto!*`,
+    final: true
+  }
 };
 
 export const ATENDENTES = [
   "5547933858953@s.whatsapp.net"
 ];
+
+export function processFlowResponse(userId, userMessage, currentState) {
+  if (!currentState || !currentState.flow) return null;
+
+  const flow = currentState.flow;
+  const step = flowSteps[flow.currentStep];
+  
+  if (!step) {
+    console.log(`❌ Passo não encontrado: ${flow.currentStep}`);
+    return null;
+  }
+
+  console.log(`🔄 Processando passo: ${flow.currentStep}, campo: ${step.field}`);
+  
+  currentState.flowData = currentState.flowData || {};
+  currentState.flowData[step.field] = userMessage;
+
+  console.log(`💾 Dados salvos:`, currentState.flowData);
+
+  if (step.nextStep && step.nextStep === "delivery_complete") {
+    console.log(`✅ ÚLTIMO PASSO - Preparando mensagem final...`);
+    
+    const mensagemAtendente = `🚚 *NOVO PEDIDO DE DELIVERY* 🚚
+
+📍 *Endereço:* ${currentState.flowData.endereco}
+📦 *Produto:* ${currentState.flowData.produto}
+👤 *Cliente:* ${userId}
+
+💬 *Por favor, verifique o valor do frete e disponibilidade do produto!*`;
+    
+    currentState.flow.currentStep = "delivery_complete";
+    
+    return {
+      userResponse: `✅ *Pedido de delivery registrado!* 🚚
+
+📍 *Endereço:* ${currentState.flowData.endereco}
+📦 *Produto solicitado:* ${currentState.flowData.produto}
+
+⏳ *Em breve um de nossos atendentes informará o valor do frete e disponibilidade do produto!*`,
+      notifyAttendants: mensagemAtendente,
+      complete: true,
+      resetFlow: true
+    };
+  }
+
+  if (step.nextStep) {
+    console.log(`➡️ Avançando para: ${step.nextStep}`);
+    currentState.flow.currentStep = step.nextStep;
+    const nextStep = flowSteps[step.nextStep];
+    
+    if (nextStep) {
+      return {
+        userResponse: nextStep.prompt,
+        notifyAttendants: null,
+        complete: false,
+        resetFlow: false
+      };
+    }
+  }
+
+  console.log(`❌ Nenhum próximo passo definido`);
+  return null;
+}
+
+export function startFlow(flowType) {
+  if (flowType === "delivery") {
+    return {
+      currentStep: "delivery_step1",
+      type: "delivery"
+    };
+  }
+  return null;
+}
