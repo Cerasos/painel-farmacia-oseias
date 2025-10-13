@@ -208,6 +208,48 @@ class MessageService {
     return true;
   }
 
+async sendMessageWithList(to, messageData, isAtendenteCommand = false) {
+  try {
+    console.log("📋 Enviando mensagem com lista para:", to);
+    
+    if (messageData.text) {
+      messageStorage.salvarMensagemEnviada(to, messageData.text);
+    }
+
+    const formattedChoices = [
+      "[Avaliação]",
+      "⭐ 1 Estrela|encerramento_1|Nada satisfeito",
+      "⭐⭐ 2 Estrelas|encerramento_2|Pouco satisfeito", 
+      "⭐⭐⭐ 3 Estrelas|encerramento_3|Satisfeito",
+      "⭐⭐⭐⭐ 4 Estrelas|encerramento_4|Bem satisfeito",
+      "⭐⭐⭐⭐⭐ 5 Estrelas|encerramento_5|Muito satisfeito"
+    ];
+
+    const payload = {
+      number: to,
+      type: "list",
+      text: messageData.text,
+      listButton: messageData.listButton || "Avaliar",
+      choices: formattedChoices,
+      footerText: messageData.footerText || ""
+    };
+
+    if (isAtendenteCommand) {
+      payload.track_source = "atendente_command";
+    }
+
+    console.log("📦 Payload da lista CORRIGIDO:", JSON.stringify(payload, null, 2));
+    const result = await uazapiService.sendMessage(payload);
+    
+    console.log("✅ Resposta da lista:", result);
+    return result && !result.error;
+      
+  } catch (error) {
+    console.error("❌ Erro ao enviar lista:", error);
+    return false;
+  }
+}
+
   processarMensagemCliente(userMessage) {
     let flowToSend = "menu";
     
