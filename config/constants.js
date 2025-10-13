@@ -94,30 +94,81 @@ Bairro`,
 📦 Por favor, *explique* sua dúvida:`,
   },
 
-  "encerramento": {
-    text: `📢 Obrigado por entrar em contato com a Farmácia Oséias! 💊
+"encerramento": {
+  text: `📢 Obrigado por entrar em contato com a Farmácia Oséias! 💊
 
 😊 Esperamos que volte sempre!
 
 📋 Como foi sua experiência?
 ⭐ Nos avalie de 1 a 5 estrelas.`,
 
-    type: "list",
-    listButton: "Avaliar",
-    footerText: "Sua avaliação nos ajuda a melhorar!",
-    choices: [
-      "[⭐]",
-      "Nada satisfeito",
-      "[⭐⭐]",
-      "Pouco satisfeito",
-      "[⭐⭐⭐]",
-      "Satisfeito",
-      "[⭐⭐⭐⭐]",
-      "Bem satisfeito",
-      "[⭐⭐⭐⭐⭐]",
-      "Muito satisfeito"
-    ]
+  type: "list",
+  listButton: "Avaliar",
+  footerText: "Sua avaliação nos ajuda a melhorar!",
+  choices: [
+    "[Avaliação]",
+    "⭐ 1 Estrela|encerramento_1|Nada satisfeito", 
+    "⭐⭐ 2 Estrelas|encerramento_2|Pouco satisfeito",
+    "⭐⭐⭐ 3 Estrelas|encerramento_3|Satisfeito",
+    "⭐⭐⭐⭐ 4 Estrelas|encerramento_4|Bem satisfeito",
+    "⭐⭐⭐⭐⭐ 5 Estrelas|encerramento_5|Muito satisfeito"
+  ]
+},
+
+  "encerramento_1_2": {
+    text: `😔 Sentimos muito que tenha tido um nível de satisfação tão baixo.
+
+💬 Por favor, adicione um comentário para que possamos te atender de uma melhor forma em um futuro breve.`,
+    footerText: "Todos estamos em evolução constante, nos ajude a melhorar.",
+    type: "text"
   },
+
+  "encerramento_3_5": {
+    text: `😊 Ficamos felizes que tenha tido esse nível de satisfação!
+
+🌟 Esperamos você em breve!
+
+💬 Fique à vontade para adicionar um comentário opcional para que possamos evoluir mais ainda!`,
+    footerText: "Sua opinião é muito importante para nós!",
+    type: "text"
+  },
+
+  "encerramento_feedback": {
+    text: `✅ *Muito obrigado pelo seu feedback!*
+
+🏥 Volte sempre à Farmácia Oséias!`,
+    footerText: "Agradecemos sua confiança!",
+    type: "text"
+  },
+
+  "encerramento_1": {
+    type: "encerramento_flow",
+    rating: 1
+  },
+  "encerramento_2": {
+    type: "encerramento_flow", 
+    rating: 2
+  },
+  "encerramento_3": {
+    type: "encerramento_flow",
+    rating: 3
+  },
+  "encerramento_4": {
+    type: "encerramento_flow",
+    rating: 4
+  },
+  "encerramento_5": {
+    type: "encerramento_flow",
+    rating: 5
+  },
+
+  "encerramento_agradecimento": {
+  text: `✅ *Agradecemos o comentário!*
+
+ Volte sempre à Farmácia Oséias! 💊`,
+  footerText: "Sua opinião é muito valiosa para nós!",
+  type: "text"
+},
 
   "inatividade": {
     text: `⏰ Inatividade detectada ⚠️
@@ -152,6 +203,16 @@ Bairro`,
 📦 *Produto solicitado:* {produto}
 
 ⏳ *Em breve um de nossos atendentes informará o valor do frete e disponibilidade do produto!*`,
+    final: true
+  },
+
+  "encerramento_flow": {
+    field: "rating",
+    final: false
+  },
+  
+  "encerramento_comment": {
+    prompt: "💬 *Comentário recebido!*",
     final: true
   }
 };
@@ -231,4 +292,15 @@ export function startFlow(flowType) {
     };
   }
   return null;
+}
+export function getEncerramentoMessage(rating) {
+  if (rating <= 2) {
+    return menuFlows.encerramento_1_2;
+  } else {
+    return menuFlows.encerramento_3_5;
+  }
+}
+
+export function getFeedbackMessage() {
+  return menuFlows.encerramento_feedback;
 }
