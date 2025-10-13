@@ -165,7 +165,7 @@ Bairro`,
   "encerramento_agradecimento": {
   text: `✅ *Agradecemos o comentário!*
 
-🏥 Volte sempre à Farmácia Oséias! 💊`,
+ Volte sempre à Farmácia Oséias! 💊`,
   footerText: "Sua opinião é muito valiosa para nós!",
   type: "text"
 },
