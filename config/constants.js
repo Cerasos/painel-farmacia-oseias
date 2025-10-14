@@ -94,26 +94,26 @@ Bairro`,
 📦 Por favor, *explique* sua dúvida:`,
   },
 
-"encerramento": {
-  text: `📢 Obrigado por entrar em contato com a Farmácia Oséias! 💊
+  "encerramento": {
+    text: `📢 Obrigado por entrar em contato com a Farmácia Oséias! 💊
 
 😊 Esperamos que volte sempre!
 
 📋 Como foi sua experiência?
 ⭐ Nos avalie de 1 a 5 estrelas.`,
 
-  type: "list",
-  listButton: "Avaliar",
-  footerText: "Sua avaliação nos ajuda a melhorar!",
-  choices: [
-    "[Avaliação]",
-    "⭐ 1 Estrela|encerramento_1|Nada satisfeito", 
-    "⭐⭐ 2 Estrelas|encerramento_2|Pouco satisfeito",
-    "⭐⭐⭐ 3 Estrelas|encerramento_3|Satisfeito",
-    "⭐⭐⭐⭐ 4 Estrelas|encerramento_4|Bem satisfeito",
-    "⭐⭐⭐⭐⭐ 5 Estrelas|encerramento_5|Muito satisfeito"
-  ]
-},
+    type: "list",
+    listButton: "Avaliar",
+    footerText: "Sua avaliação nos ajuda a melhorar!",
+    choices: [
+      "[Avaliação]",
+      "⭐ 1 Estrela|encerramento_1|Nada satisfeito",
+      "⭐⭐ 2 Estrelas|encerramento_2|Pouco satisfeito",
+      "⭐⭐⭐ 3 Estrelas|encerramento_3|Satisfeito",
+      "⭐⭐⭐⭐ 4 Estrelas|encerramento_4|Bem satisfeito",
+      "⭐⭐⭐⭐⭐ 5 Estrelas|encerramento_5|Muito satisfeito"
+    ]
+  },
 
   "encerramento_1_2": {
     text: `😔 Sentimos muito que tenha tido um nível de satisfação tão baixo.
@@ -146,7 +146,7 @@ Bairro`,
     rating: 1
   },
   "encerramento_2": {
-    type: "encerramento_flow", 
+    type: "encerramento_flow",
     rating: 2
   },
   "encerramento_3": {
@@ -163,12 +163,20 @@ Bairro`,
   },
 
   "encerramento_agradecimento": {
-  text: `✅ *Agradecemos o comentário!*
+    text: `✅ *Agradecemos o comentário!*
 
- Volte sempre à Farmácia Oséias! 💊`,
-  footerText: "Sua opinião é muito valiosa para nós!",
-  type: "text"
-},
+Volte sempre à Farmácia Oséias! 💊`,
+    footerText: "Sua opinião é muito valiosa para nós!",
+    type: "text"
+  },
+  "session_ended": {
+    text: `🏁 *Atendimento finalizado*
+  
+Obrigado por entrar em contato com a Farmácia Oséias! 💊
+
+📞 Volte sempre que precisar!`,
+    type: "text"
+  },
 
   "inatividade": {
     text: `⏰ Inatividade detectada ⚠️
@@ -189,13 +197,13 @@ Bairro`,
     nextStep: "delivery_step2",
     field: "endereco"
   },
-  
+
   "delivery_step2": {
     prompt: "📋 *Por favor, mencione o produto ou medicamento desejado:*",
     nextStep: "delivery_complete",
     field: "produto"
   },
-  
+
   "delivery_complete": {
     prompt: `✅ *Pedido de delivery registrado!* 🚚
 
@@ -210,7 +218,7 @@ Bairro`,
     field: "rating",
     final: false
   },
-  
+
   "encerramento_comment": {
     prompt: "💬 *Comentário recebido!*",
     final: true
@@ -226,14 +234,14 @@ export function processFlowResponse(userId, userMessage, currentState) {
 
   const flow = currentState.flow;
   const step = flowSteps[flow.currentStep];
-  
+
   if (!step) {
     console.log(`❌ Passo não encontrado: ${flow.currentStep}`);
     return null;
   }
 
   console.log(`🔄 Processando passo: ${flow.currentStep}, campo: ${step.field}`);
-  
+
   currentState.flowData = currentState.flowData || {};
   currentState.flowData[step.field] = userMessage;
 
@@ -241,7 +249,7 @@ export function processFlowResponse(userId, userMessage, currentState) {
 
   if (step.nextStep && step.nextStep === "delivery_complete") {
     console.log(`✅ ÚLTIMO PASSO - Preparando mensagem final...`);
-    
+
     const mensagemAtendente = `🚚 *NOVO PEDIDO DE DELIVERY* 🚚
 
 📍 *Endereço:* ${currentState.flowData.endereco}
@@ -249,9 +257,9 @@ export function processFlowResponse(userId, userMessage, currentState) {
 👤 *Cliente:* ${userId}
 
 💬 *Por favor, verifique o valor do frete e disponibilidade do produto!*`;
-    
+
     currentState.flow.currentStep = "delivery_complete";
-    
+
     return {
       userResponse: `✅ *Pedido de delivery registrado!* 🚚
 
@@ -261,7 +269,8 @@ export function processFlowResponse(userId, userMessage, currentState) {
 ⏳ *Em breve um de nossos atendentes informará o valor do frete e disponibilidade do produto!*`,
       notifyAttendants: mensagemAtendente,
       complete: true,
-      resetFlow: true
+      resetFlow: true,
+      cancelInactivity: true
     };
   }
 
@@ -269,7 +278,7 @@ export function processFlowResponse(userId, userMessage, currentState) {
     console.log(`➡️ Avançando para: ${step.nextStep}`);
     currentState.flow.currentStep = step.nextStep;
     const nextStep = flowSteps[step.nextStep];
-    
+
     if (nextStep) {
       return {
         userResponse: nextStep.prompt,

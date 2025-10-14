@@ -26,23 +26,64 @@ export async function handleWebhook(req, res) {
     }
 
     await messageStorage.sincronizarContatos();
+
+    let currentState = userStates.get(userPhone) || {
+      currentMenu: "menu",
+      firstMessage: true,
+      flow: null,
+      flowData: null
+    };
+
     if (userPhone) {
-      sessionManager.updateActivity(userPhone);
+      if (messageService.isAtendente(userPhone)) {
+        const messageContext = webhookData.message?.content?.contextInfo;
+
+        if (messageContext?.participant) {
+          const clientPhone = messageContext.participant;
+          sessionManager.markAttendeeReplyToClient(clientPhone);
+          console.log(`👨‍💼✅ ATENDENTE ${userPhone} RESPONDEU AO CLIENTE ${clientPhone} VIA CONTEXTO`);
+        } else {
+          console.log(`👨‍💼 ATENDENTE ${userPhone} enviou mensagem direta`);
+
+          for (const [clientId, session] of sessionManager.sessions) {
+            if (!sessionManager.isAtendente(clientId) && session.hasContactedAttendee) {
+              sessionManager.markAttendeeDirectMessage(clientId);
+              console.log(`👨‍💼✅ ATENDENTE RESPONDEU DIRETAMENTE para ${clientId}`);
+              break;
+            }
+          }
+          sessionManager.markAttendeeMessage(userPhone);
+        }
+      } else {
+        sessionManager.markClientActivity(userPhone);
+        console.log(`💬 Cliente ${userPhone} respondeu`);
+      }
 
       if (!sessionManager.isInEncerramentoFlow(userPhone)) {
         sessionManager.registerInactivityCallback(userPhone, async (action) => {
           console.log(`🚀 CALLBACK DE INATIVIDADE: ${action} para ${userPhone}`);
 
           if (action === "encerramento") {
-            await messageService.sendMessageWithList(userPhone, menuFlows.encerramento);
+            await messageService.sendMessageWithButtons(userPhone, {
+              text: `📢 Obrigado por entrar em contato com a Farmácia Oséias! 💊\n\n😊 Esperamos que volte sempre!\n\n📋 Como foi sua experiência?`,
+              type: "list",
+              listButton: "⭐ Avaliar Atendimento",
+              footerText: "Sua avaliação nos ajuda a melhorar!",
+              choices: [
+                "[Avaliação do Atendimento]",
+                "⭐ 1 Estrela|encerramento_1|Nada satisfeito",
+                "⭐⭐ 2 Estrelas|encerramento_2|Pouco satisfeito",
+                "⭐⭐⭐ 3 Estrelas|encerramento_3|Satisfeito",
+                "⭐⭐⭐⭐ 4 Estrelas|encerramento_4|Bem satisfeito",
+                "⭐⭐⭐⭐⭐ 5 Estrelas|encerramento_5|Muito satisfeito"
+              ]
+            });
           } else if (action === "inatividade") {
             await messageService.sendMessageWithButtons(userPhone, menuFlows.inatividade);
-          } else if (action === "session_ended") {
           }
         });
       }
     }
-
     const message = webhookData.message;
     let isMediaMessage = false;
     let mediaType = 'text';
@@ -60,50 +101,68 @@ export async function handleWebhook(req, res) {
 
       if (buttonClicked === "atendente" || buttonClicked === "aguardar atendente") {
         sessionManager.markContactedAttendee(userPhone);
+        console.log(`📞 USUÁRIO ${userPhone} SOLICITOU ATENDENTE - ATIVANDO FLUXO COMPLETO`);
       }
 
       if (buttonClicked.startsWith("encerramento_")) {
         const rating = parseInt(buttonClicked.replace("encerramento_", ""));
+
         sessionManager.startEncerramentoFlow(userPhone, rating);
 
         sessionManager.unregisterInactivityCallback(userPhone);
 
         if (rating <= 2) {
-          await messageService.sendMessageWithButtons(userPhone, menuFlows.encerramento_1_2);
+          await messageService.sendMessageWithButtons(userPhone, {
+            text: menuFlows.encerramento_1_2.text,
+            footerText: menuFlows.encerramento_1_2.footerText,
+            type: "text"
+          });
         } else {
-          await messageService.sendMessageWithButtons(userPhone, menuFlows.encerramento_3_5);
+          await messageService.sendMessageWithButtons(userPhone, {
+            text: menuFlows.encerramento_3_5.text,
+            footerText: menuFlows.encerramento_3_5.footerText,
+            type: "text"
+          });
         }
 
         return res.status(200).json({ success: true });
       }
 
+      if (buttonClicked === "delivery" || buttonClicked === "produtos" || buttonClicked === "duvidasgerais") {
+        sessionManager.markServiceUsed(userPhone);
+        console.log(`🛎️ USUÁRIO ${userPhone} USOU SERVIÇO - PODE AVALIAR`);
+      }
+
       if (buttonClicked === "delivery") {
         console.log("🚚 INICIANDO FLUXO DE DELIVERY");
-        const currentState = userStates.get(userPhone) || { currentMenu: "menu" };
         currentState.flow = startFlow("delivery");
+        currentState.firstMessage = false;
         userStates.set(userPhone, currentState);
         await messageService.sendMessageWithButtons(userPhone, {
           text: menuFlows.delivery.text
         });
+        sessionManager.markBotMessage(userPhone);
       } else {
         console.log(`🎯 Executando flow: ${buttonClicked}`);
         const menuFlow = messageService.getMenuFlow(buttonClicked);
 
         if (menuFlow) {
           await messageService.sendMessageWithButtons(userPhone, menuFlow);
+          currentState.firstMessage = false;
           console.log(`✅ Flow executado: ${buttonClicked}`);
+          sessionManager.markBotMessage(userPhone);
         } else {
           console.log(`❌ Flow não encontrado: ${buttonClicked}`);
           await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow('menu'));
+          sessionManager.markBotMessage(userPhone);
         }
       }
 
+      userStates.set(userPhone, currentState);
       return res.status(200).json({ success: true });
     }
 
     if (userPhone) {
-      let currentState = userStates.get(userPhone) || { currentMenu: "menu" };
-
       if (isMediaMessage && messageId) {
         console.log(`🔄 BAIXANDO MÍDIA DA UAZAPI...`);
 
@@ -162,20 +221,28 @@ export async function handleWebhook(req, res) {
       else if (userMessage && !isMediaMessage) {
         messageStorage.salvarMensagem(userPhone, userMessage, 'received', 'text');
         console.log("💾 Mensagem de texto salva");
-        if (userMessage === "teste inatividade") {
-          const session = sessionManager.sessions.get(userPhone);
-          if (session) {
-            session.lastActivity = Date.now() - 15000;
-            console.log("🧪 FORÇANDO 15 SEGUNDOS DE INATIVIDADE PARA TESTE");
-          }
-        }
+
 
         if (!messageService.isAtendente(userPhone)) {
           await messageService.enviarAlertaAtendente(userPhone, userMessage);
+
           if (sessionManager.isInEncerramentoFlow(userPhone)) {
             console.log("💬 PROCESSANDO COMENTÁRIO DE AVALIAÇÃO");
             sessionManager.processEncerramentoComment(userPhone, userMessage);
+
             await messageService.sendMessageWithButtons(userPhone, menuFlows.encerramento_agradecimento);
+            sessionManager.markBotMessage(userPhone);
+
+            console.log(`🏁 ATENDIMENTO FINALIZADO para ${userPhone} - RESETANDO ESTADO`);
+            sessionManager.endEncerramentoFlow(userPhone);
+            sessionManager.unregisterInactivityCallback(userPhone);
+            userStates.set(userPhone, {
+              currentMenu: "menu",
+              firstMessage: true,
+              flow: null,
+              flowData: null
+            });
+
             return res.status(200).json({ success: true });
           }
 
@@ -188,6 +255,13 @@ export async function handleWebhook(req, res) {
               await messageService.sendMessageWithButtons(userPhone, {
                 text: flowResult.userResponse
               });
+              sessionManager.markBotMessage(userPhone);
+
+              //if (flowResult.cancelInactivity && flowResult.complete) {
+              //sessionManager.unregisterInactivityCallback(userPhone);
+              //console.log(`FLUXO DE INATIVIDADE CANCELADO para ${userPhone} - PEDIDO DELIVERY REGISTRADO`);
+              //}
+
               if (flowResult.notifyAttendants && flowResult.complete) {
                 for (const atendente of ATENDENTES) {
                   await messageService.sendMessageWithButtons(atendente, {
@@ -195,10 +269,12 @@ export async function handleWebhook(req, res) {
                   }, true);
                 }
               }
+
               if (flowResult.resetFlow && flowResult.complete) {
                 currentState.flow = null;
                 currentState.flowData = null;
                 currentState.currentMenu = "menu";
+                currentState.firstMessage = true;
               }
 
               userStates.set(userPhone, currentState);
@@ -206,14 +282,17 @@ export async function handleWebhook(req, res) {
             }
           }
 
-          if (userMessage) {
-            const flowToSend = messageService.processarMensagemCliente(userMessage);
-            console.log(`🎯 Flow selecionado: ${flowToSend}`);
+          if (currentState.firstMessage) {
+            console.log("🎯 PRIMEIRA MENSAGEM - Mostrando menu");
+            await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow("menu"));
+            currentState.firstMessage = false;
 
-            if (flowToSend) {
-              await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow(flowToSend));
-            }
+            sessionManager.markBotMessage(userPhone);
+          } else {
+            console.log("🎯 MENSAGEM SEGUINTE - Mantendo fluxo atual");
           }
+
+          userStates.set(userPhone, currentState);
         }
       }
     }
