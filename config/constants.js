@@ -7,7 +7,7 @@ export const menuFlows = {
     text: `📢 Olá! Seja muito bem-vindo à Farmácia Oséias! 💊
 
 📍 *Endereço físico*: Avenida Nereu Ramos, 141 – Centro
-🕒 *Horário de atendimento*: 08h00 às 22h00 (GMT-3)
+🕒 *Horário de atendimento*: 08h00 às 20h00 (GMT-3)
 
 💬 Como podemos te ajudar hoje?`,
     type: "button",
@@ -49,6 +49,7 @@ export const menuFlows = {
     text: `🛒 *Consultar preço dos produtos* ✔️
 
 📋 *Digite o nome do medicamento ou produto desejado*:
+📷 *Ou envie uma foto da sua receita*:
 
 ⏳ Em breve um de nossos atendentes entrará em contato.`,
   },
@@ -75,7 +76,7 @@ export const menuFlows = {
   "delivery": {
     text: `🚚 *Solicitar delivery* ✔️
 
-📍 Área de cobertura: Centro e bairros próximos
+📍 Área de cobertura: Itapema e região ou 30km
 💰 Taxa de entrega: Variável a depender da distância, consultar valor com atendente.
 
 📍 *Insira seu endereço neste modelo:*
