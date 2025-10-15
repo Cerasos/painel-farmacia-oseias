@@ -201,15 +201,27 @@ Bairro`,
 
   "delivery_step2": {
     prompt: "📋 *Por favor, mencione o produto ou medicamento desejado:*",
-    nextStep: "delivery_complete",
+    nextStep: "delivery_review",
     field: "produto"
   },
 
-  "delivery_complete": {
-    prompt: `✅ *Pedido de delivery registrado!* 🚚
+  "delivery_review": {
+    prompt: (flowData) => `✅ *Revise seu pedido de delivery* 🚚
 
-📍 *Endereço:* {endereco}
-📦 *Produto solicitado:* {produto}
+🏠 *Endereço:* ${flowData.endereco}
+📦 *Produto solicitado:* ${flowData.produto}
+
+🔄 *Deseja alterar alguma informação?*`,
+    final: false,
+    buttons: [
+      "✅ Confirmar Pedido|delivery_confirmar",
+      "🏠 Editar Endereço|delivery_editar_endereco",
+      "📦 Editar Produto|delivery_editar_produto"
+    ]
+  },
+
+  "delivery_complete": {
+    prompt: `✅ *Pedido de delivery confirmado!* 🚚
 
 ⏳ *Em breve um de nossos atendentes informará o valor do frete e disponibilidade do produto!*`,
     final: true
@@ -243,35 +255,42 @@ export function processFlowResponse(userId, userMessage, currentState) {
 
   console.log(`🔄 Processando passo: ${flow.currentStep}, campo: ${step.field}`);
 
+  if (flow.currentStep === "delivery_review") {
+    return null;
+  }
+
   currentState.flowData = currentState.flowData || {};
   currentState.flowData[step.field] = userMessage;
 
   console.log(`💾 Dados salvos:`, currentState.flowData);
 
-  if (step.nextStep && step.nextStep === "delivery_complete") {
-    console.log(`✅ ÚLTIMO PASSO - Preparando mensagem final...`);
 
-    const mensagemAtendente = `🚚 *NOVO PEDIDO DE DELIVERY* 🚚
+  if (step.nextStep && step.nextStep === "delivery_review") {
+    console.log(`✅ AVANÇANDO PARA REVISÃO...`);
 
-📍 *Endereço:* ${currentState.flowData.endereco}
-📦 *Produto:* ${currentState.flowData.produto}
-👤 *Cliente:* ${userId}
-
-💬 *Por favor, verifique o valor do frete e disponibilidade do produto!*`;
-
-    currentState.flow.currentStep = "delivery_complete";
+    currentState.flow.currentStep = "delivery_review";
+    const reviewStep = flowSteps.delivery_review;
 
     return {
-      userResponse: `✅ *Pedido de delivery registrado!* 🚚
+      userResponse: reviewStep.prompt(currentState.flowData),
+      buttons: reviewStep.buttons,
+      complete: false,
+      resetFlow: false
+    };
+  }
 
-📍 *Endereço:* ${currentState.flowData.endereco}
-📦 *Produto solicitado:* ${currentState.flowData.produto}
+  if (flow.editing) {
+    console.log(`✅ VOLTANDO PARA REVISÃO APÓS EDIÇÃO`);
 
-⏳ *Em breve um de nossos atendentes informará o valor do frete e disponibilidade do produto!*`,
-      notifyAttendants: mensagemAtendente,
-      complete: true,
-      resetFlow: true,
-      cancelInactivity: true
+    currentState.flow.currentStep = "delivery_review";
+    currentState.flow.editing = false;
+    const reviewStep = flowSteps.delivery_review;
+
+    return {
+      userResponse: reviewStep.prompt(currentState.flowData),
+      buttons: reviewStep.buttons,
+      complete: false,
+      resetFlow: false
     };
   }
 
@@ -293,7 +312,6 @@ export function processFlowResponse(userId, userMessage, currentState) {
   console.log(`❌ Nenhum próximo passo definido`);
   return null;
 }
-
 export function startFlow(flowType) {
   if (flowType === "delivery") {
     return {

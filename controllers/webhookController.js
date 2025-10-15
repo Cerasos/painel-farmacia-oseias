@@ -1,7 +1,7 @@
 import messageService from "../services/messageService.js";
 import messageStorage from "../storage/messageStorage.js";
 import mediaService from "../services/mediaService.js";
-import { userStates, processFlowResponse, startFlow, menuFlows, ATENDENTES } from "../config/constants.js";
+import { userStates, processFlowResponse, startFlow, menuFlows, ATENDENTES, flowSteps } from "../config/constants.js";
 import sessionManager from "../manager/sessionManager.js";
 
 export async function handleWebhook(req, res) {
@@ -39,22 +39,27 @@ export async function handleWebhook(req, res) {
         const messageContext = webhookData.message?.content?.contextInfo;
 
         if (messageContext?.participant) {
+
           const clientPhone = messageContext.participant;
           sessionManager.markAttendeeReplyToClient(clientPhone);
           console.log(`👨‍💼✅ ATENDENTE ${userPhone} RESPONDEU AO CLIENTE ${clientPhone} VIA CONTEXTO`);
         } else {
+
           console.log(`👨‍💼 ATENDENTE ${userPhone} enviou mensagem direta`);
 
-          for (const [clientId, session] of sessionManager.sessions) {
-            if (!sessionManager.isAtendente(clientId) && session.hasContactedAttendee) {
-              sessionManager.markAttendeeDirectMessage(clientId);
-              console.log(`👨‍💼✅ ATENDENTE RESPONDEU DIRETAMENTE para ${clientId}`);
-              break;
-            }
+
+          const clientPhone = sessionManager.detectClientForAttendeeReply(userPhone);
+
+          if (clientPhone) {
+            sessionManager.markAttendeeReplyToSpecificClient(userPhone, clientPhone);
+            console.log(`👨‍💼✅ ATENDENTE ${userPhone} RESPONDEU para ${clientPhone}`);
+          } else {
+            sessionManager.markAttendeeMessage(userPhone);
+            console.log(`👨‍💼 ATENDENTE ${userPhone} enviou mensagem geral`);
           }
-          sessionManager.markAttendeeMessage(userPhone);
         }
       } else {
+        sessionManager.resetSession(userPhone);
         sessionManager.markClientActivity(userPhone);
         console.log(`💬 Cliente ${userPhone} respondeu`);
       }
@@ -62,6 +67,17 @@ export async function handleWebhook(req, res) {
       if (!sessionManager.isInEncerramentoFlow(userPhone)) {
         sessionManager.registerInactivityCallback(userPhone, async (action) => {
           console.log(`🚀 CALLBACK DE INATIVIDADE: ${action} para ${userPhone}`);
+
+          const currentState = userStates.get(userPhone);
+          const currentMenu = currentState?.currentMenu;
+
+          const menusSemInatividade = ["menu", "horarios"];
+          const isMenuSemInatividade = menusSemInatividade.includes(currentMenu);
+
+          if (isMenuSemInatividade) {
+            console.log(`🚫 INATIVIDADE BLOQUEADA para: ${currentMenu}`);
+            return;
+          }
 
           if (action === "encerramento") {
             await messageService.sendMessageWithButtons(userPhone, {
@@ -84,6 +100,7 @@ export async function handleWebhook(req, res) {
         });
       }
     }
+
     const message = webhookData.message;
     let isMediaMessage = false;
     let mediaType = 'text';
@@ -96,6 +113,8 @@ export async function handleWebhook(req, res) {
 
     if (buttonClicked) {
       console.log(`🎯 BOTÃO CLICADO DETECTADO: ${buttonClicked}`);
+
+      currentState.currentMenu = buttonClicked;
 
       messageStorage.salvarMensagem(userPhone, `[BOTÃO: ${buttonClicked}]`, 'received', 'text');
 
@@ -139,23 +158,87 @@ export async function handleWebhook(req, res) {
         currentState.firstMessage = false;
         userStates.set(userPhone, currentState);
         await messageService.sendMessageWithButtons(userPhone, {
-          text: menuFlows.delivery.text
+          text: flowSteps.delivery_step1.prompt
         });
         sessionManager.markBotMessage(userPhone);
-      } else {
-        console.log(`🎯 Executando flow: ${buttonClicked}`);
-        const menuFlow = messageService.getMenuFlow(buttonClicked);
+        userStates.set(userPhone, currentState);
+        return res.status(200).json({ success: true });
+      }
 
-        if (menuFlow) {
-          await messageService.sendMessageWithButtons(userPhone, menuFlow);
-          currentState.firstMessage = false;
-          console.log(`✅ Flow executado: ${buttonClicked}`);
-          sessionManager.markBotMessage(userPhone);
-        } else {
-          console.log(`❌ Flow não encontrado: ${buttonClicked}`);
-          await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow('menu'));
-          sessionManager.markBotMessage(userPhone);
+      if (buttonClicked.startsWith("delivery_")) {
+        if (buttonClicked === "delivery_confirmar") {
+          console.log("✅ PEDIDO DE DELIVERY CONFIRMADO");
+
+          const mensagemAtendente = `🚚 *NOVO PEDIDO DE DELIVERY* 🚚
+
+📍 *Endereço:* ${currentState.flowData.endereco}
+📦 *Produto:* ${currentState.flowData.produto}
+👤 *Cliente:* ${userPhone}
+
+💬 *Pedido confirmado pelo cliente!*`;
+
+          await messageService.sendMessageWithButtons(userPhone, {
+            text: `✅ *Pedido de delivery confirmado!* 🚚
+
+🏠 *Endereço:* ${currentState.flowData.endereco}
+📦 *Produto solicitado:* ${currentState.flowData.produto}
+
+⏳ *Em breve um de nossos atendentes informará o valor do frete e disponibilidade do produto!*`
+          });
+
+          for (const atendente of ATENDENTES) {
+            await messageService.sendMessageWithButtons(atendente, {
+              text: mensagemAtendente
+            }, true);
+          }
+
+          currentState.flow = null;
+          currentState.flowData = null;
+          currentState.currentMenu = "delivery_complete";
+
+        } else if (buttonClicked === "delivery_editar_endereco") {
+          console.log("🔄 EDITANDO ENDEREÇO DO DELIVERY");
+
+          currentState.flow.currentStep = "delivery_step1";
+          currentState.flow.editing = true;
+          await messageService.sendMessageWithButtons(userPhone, {
+            text: `🏠 *Editando Endereço*
+
+📝 *Endereço atual:* ${currentState.flowData.endereco}
+
+💬 *Por favor, digite o novo endereço para entrega:*`
+          });
+
+        } else if (buttonClicked === "delivery_editar_produto") {
+          console.log("🔄 EDITANDO PRODUTO DO DELIVERY");
+
+          currentState.flow.currentStep = "delivery_step2";
+          currentState.flow.editing = true;
+          await messageService.sendMessageWithButtons(userPhone, {
+            text: `📦 *Editando Produto*
+
+📝 *Produto atual:* ${currentState.flowData.produto}
+
+💬 *Por favor, digite o novo produto ou medicamento desejado:*`
+          });
         }
+
+        sessionManager.markBotMessage(userPhone);
+
+        userStates.set(userPhone, currentState);
+        return res.status(200).json({ success: true });
+      }
+
+      const menuFlow = messageService.getMenuFlow(buttonClicked);
+      if (menuFlow) {
+        await messageService.sendMessageWithButtons(userPhone, menuFlow);
+        currentState.firstMessage = false;
+        console.log(`✅ Flow executado: ${buttonClicked}`);
+        sessionManager.markBotMessage(userPhone);
+      } else {
+        console.log(`❌ Flow não encontrado: ${buttonClicked}`);
+        await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow('menu'));
+        sessionManager.markBotMessage(userPhone);
       }
 
       userStates.set(userPhone, currentState);
@@ -222,7 +305,6 @@ export async function handleWebhook(req, res) {
         messageStorage.salvarMensagem(userPhone, userMessage, 'received', 'text');
         console.log("💾 Mensagem de texto salva");
 
-
         if (!messageService.isAtendente(userPhone)) {
           await messageService.enviarAlertaAtendente(userPhone, userMessage);
 
@@ -252,15 +334,18 @@ export async function handleWebhook(req, res) {
             const flowResult = processFlowResponse(userPhone, userMessage, currentState);
 
             if (flowResult) {
-              await messageService.sendMessageWithButtons(userPhone, {
-                text: flowResult.userResponse
-              });
-              sessionManager.markBotMessage(userPhone);
+              if (flowResult.buttons) {
+                await messageService.sendMessageWithButtons(userPhone, {
+                  text: flowResult.userResponse,
+                  choices: flowResult.buttons
+                });
+              } else {
+                await messageService.sendMessageWithButtons(userPhone, {
+                  text: flowResult.userResponse
+                });
+              }
 
-              //if (flowResult.cancelInactivity && flowResult.complete) {
-              //sessionManager.unregisterInactivityCallback(userPhone);
-              //console.log(`FLUXO DE INATIVIDADE CANCELADO para ${userPhone} - PEDIDO DELIVERY REGISTRADO`);
-              //}
+              sessionManager.markBotMessage(userPhone);
 
               if (flowResult.notifyAttendants && flowResult.complete) {
                 for (const atendente of ATENDENTES) {
@@ -286,7 +371,6 @@ export async function handleWebhook(req, res) {
             console.log("🎯 PRIMEIRA MENSAGEM - Mostrando menu");
             await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow("menu"));
             currentState.firstMessage = false;
-
             sessionManager.markBotMessage(userPhone);
           } else {
             console.log("🎯 MENSAGEM SEGUINTE - Mantendo fluxo atual");

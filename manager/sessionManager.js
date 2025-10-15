@@ -6,6 +6,7 @@ class SessionManager {
     this.ENCRRAMENTO_TIMEOUT = 5 * 60 * 1000;
     this.inactivityCallbacks = new Map();
     this.lastMessageFrom = new Map();
+    this.lastActiveClient = null;
     console.log("🕒 SESSION MANAGER INICIADO - Verificando inatividade a cada 5s");
     this.startInactivityCheckInterval();
   }
@@ -14,6 +15,15 @@ class SessionManager {
     setInterval(() => {
       this.checkAllSessionsInactivity();
     }, 5 * 1000);
+  }
+
+  setLastActiveClient(clientPhone) {
+    this.lastActiveClient = clientPhone;
+    console.log(`🎯 ÚLTIMO CLIENTE ATIVO DEFINIDO: ${clientPhone}`);
+  }
+
+  getLastActiveClient() {
+    return this.lastActiveClient;
   }
 
   markDeliveryRegistered(userId) {
@@ -28,7 +38,7 @@ class SessionManager {
     session.avaliacaoSent = false;
     session.inatividadeSentTime = null;
 
-    console.log(`🚚✅ DELIVERY REGISTRADO para ${userId} - AGUARDANDO RESPOSTA DO ATENDENTE`);
+    console.log(`🚚 DELIVERY REGISTRADO para ${userId} - AGUARDANDO RESPOSTA DO ATENDENTE`);
   }
 
   checkAllSessionsInactivity() {
@@ -42,29 +52,34 @@ class SessionManager {
       const inactiveTime = now - session.lastActivity;
       const lastFrom = this.getLastMessageFrom(userId);
 
-      console.log(`⏰ CLIENTE ${userId}: ${Math.round(inactiveTime / 1000)}s inativo | lastFrom: ${lastFrom}`);
+      console.log(`⏰ CLIENTE ${userId}: ${Math.round(inactiveTime / 1000)}s inativo | lastFrom: ${lastFrom} | warningSent: ${session.inactivityWarningSent} | avaliacaoSent: ${session.avaliacaoSent}`);
+
+
       const shouldCheckInactivity =
         (lastFrom === 'bot' || lastFrom === 'attendee') &&
         !session.isInEncerramentoFlow;
 
       if (shouldCheckInactivity) {
-        const shouldSendInatividade = inactiveTime >= this.WARNING_TIME &&
-          !session.inactivityWarningSent;
 
-        if (shouldSendInatividade) {
+        if (inactiveTime >= this.WARNING_TIME &&
+          !session.inactivityWarningSent &&
+          !session.avaliacaoSent) {
+
           console.log(`⚠️⚠️⚠️ CLIENTE NÃO RESPONDEU - ENVIANDO AVISO DE INATIVIDADE (${Math.round(inactiveTime / 1000)}s)`);
           session.inactivityWarningSent = true;
           session.inatividadeSentTime = now;
           this.triggerInactivityCallback(userId, "inatividade");
         }
 
-        const shouldSendAvaliacao = session.inatividadeSentTime &&
-          (now - session.inatividadeSentTime >= this.WARNING_TIME) &&
-          !session.avaliacaoSent;
 
-        if (shouldSendAvaliacao) {
-          console.log(`⭐⭐⭐ CLIENTE NÃO RESPONDEU AO AVISO - ENVIANDO AVALIAÇÃO (${Math.round((now - session.inatividadeSentTime) / 1000)}s após inatividade)`);
+        const timeSinceWarning = session.inatividadeSentTime ? (now - session.inatividadeSentTime) : 0;
+        if (session.inatividadeSentTime &&
+          timeSinceWarning >= this.WARNING_TIME &&
+          !session.avaliacaoSent) {
+
+          console.log(`⭐⭐⭐ CLIENTE NÃO RESPONDEU AO AVISO - ENVIANDO AVALIAÇÃO (${Math.round(timeSinceWarning / 1000)}s após aviso)`);
           session.avaliacaoSent = true;
+          session.isInEncerramentoFlow = true;
           this.triggerInactivityCallback(userId, "encerramento");
         }
       }
@@ -94,6 +109,7 @@ class SessionManager {
       session = this.startSession(userId);
     }
 
+
     session.lastActivity = Date.now();
     session.inactivityWarningSent = false;
     session.avaliacaoSent = false;
@@ -108,6 +124,7 @@ class SessionManager {
     if (!session) {
       session = this.startSession(clientPhone);
     }
+
 
     session.lastActivity = Date.now();
     session.inactivityWarningSent = false;
@@ -125,6 +142,7 @@ class SessionManager {
       session = this.startSession(clientPhone);
     }
 
+
     session.lastActivity = Date.now();
     session.waitingClientResponse = true;
     session.waitingAttendeeResponse = false;
@@ -136,6 +154,26 @@ class SessionManager {
 
     console.log(`👨‍💼✅ ATENDENTE MANDOU MENSAGEM DIRETA para ${clientPhone} - AGORA CLIENTE PRECISA RESPONDER (INATIVIDADE LIGADA)`);
   }
+
+
+  markAttendeeReplyToSpecificClient(attendeePhone, clientPhone) {
+    let session = this.sessions.get(clientPhone);
+    if (!session) {
+      session = this.startSession(clientPhone);
+    }
+
+
+    session.lastActivity = Date.now();
+    session.inactivityWarningSent = false;
+    session.avaliacaoSent = false;
+    session.inatividadeSentTime = null;
+    session.isInEncerramentoFlow = false;
+    session.waitingClientResponse = true;
+    this.setLastMessageFrom(clientPhone, 'attendee');
+
+    console.log(`👨‍💼✅ ATENDENTE ${attendeePhone} RESPONDEU DIRETAMENTE para ${clientPhone} - RESETANDO INATIVIDADE`);
+  }
+
   markAttendeeMessage(userId) {
     let session = this.sessions.get(userId);
     if (!session) {
@@ -153,13 +191,33 @@ class SessionManager {
       session = this.startSession(userId);
     }
 
+
     session.lastActivity = Date.now();
     session.inactivityWarningSent = false;
     session.avaliacaoSent = false;
     session.inatividadeSentTime = null;
+    session.waitingClientResponse = false;
     this.setLastMessageFrom(userId, 'client');
 
-    console.log(`💬✅ CLIENTE ${userId} RESPONDEU - CANCELANDO INATIVIDADE`);
+
+    this.setLastActiveClient(userId);
+
+    console.log(`💬✅ CLIENTE ${userId} RESPONDEU - CANCELANDO INATIVIDADE COMPLETAMENTE`);
+  }
+
+
+  resetSession(userId) {
+    let session = this.sessions.get(userId);
+    if (session) {
+      session.lastActivity = Date.now();
+      session.inactivityWarningSent = false;
+      session.avaliacaoSent = false;
+      session.inatividadeSentTime = null;
+      session.waitingClientResponse = false;
+      session.isInEncerramentoFlow = false;
+
+      console.log(`🔄 SESSÃO RESETADA para ${userId}`);
+    }
   }
 
   markServiceUsed(userId) {
@@ -177,6 +235,10 @@ class SessionManager {
       session = this.startSession(userId);
     }
     session.hasContactedAttendee = true;
+
+
+    this.setLastActiveClient(userId);
+
     console.log(`📞 CLIENTE ${userId} SOLICITOU ATENDENTE`);
   }
 
@@ -267,6 +329,26 @@ class SessionManager {
   isAtendente(userId) {
     const atendentes = ["5547933858953@s.whatsapp.net"];
     return atendentes.includes(userId);
+  }
+
+
+  detectClientForAttendeeReply(attendeePhone) {
+
+    if (this.lastActiveClient) {
+      console.log(`🎯 USANDO ÚLTIMO CLIENTE ATIVO: ${this.lastActiveClient}`);
+      return this.lastActiveClient;
+    }
+
+
+    for (const [clientId, session] of this.sessions) {
+      if (!this.isAtendente(clientId) && session.hasContactedAttendee) {
+        console.log(`🔍 ENCONTRADO CLIENTE COM ATENDENTE: ${clientId}`);
+        return clientId;
+      }
+    }
+
+    console.log(`❌ NENHUM CLIENTE ENCONTRADO para resposta do atendente`);
+    return null;
   }
 
   triggerInactivityCallback(userId, action) {
