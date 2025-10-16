@@ -7,7 +7,7 @@ export const menuFlows = {
     text: `📢 Olá! Seja muito bem-vindo à Farmácia Oséias! 💊
 
 📍 *Endereço físico*: Avenida Nereu Ramos, 141 – Centro
-🕒 *Horário de atendimento*: 08h00 às 22h00 (GMT-3)
+🕒 *Horário de atendimento*: 08h00 às 20h00 (GMT-3)
 
 💬 Como podemos te ajudar hoje?`,
     type: "button",
@@ -49,6 +49,7 @@ export const menuFlows = {
     text: `🛒 *Consultar preço dos produtos* ✔️
 
 📋 *Digite o nome do medicamento ou produto desejado*:
+📷 *Ou envie uma foto da sua receita*:
 
 ⏳ Em breve um de nossos atendentes entrará em contato.`,
   },
@@ -75,7 +76,7 @@ export const menuFlows = {
   "delivery": {
     text: `🚚 *Solicitar delivery* ✔️
 
-📍 Área de cobertura: Centro e bairros próximos
+📍 Área de cobertura: Itapema e região ou 30km
 💰 Taxa de entrega: Variável a depender da distância, consultar valor com atendente.
 
 📍 *Insira seu endereço neste modelo:*
@@ -94,26 +95,26 @@ Bairro`,
 📦 Por favor, *explique* sua dúvida:`,
   },
 
-"encerramento": {
-  text: `📢 Obrigado por entrar em contato com a Farmácia Oséias! 💊
+  "encerramento": {
+    text: `📢 Obrigado por entrar em contato com a Farmácia Oséias! 💊
 
 😊 Esperamos que volte sempre!
 
 📋 Como foi sua experiência?
 ⭐ Nos avalie de 1 a 5 estrelas.`,
 
-  type: "list",
-  listButton: "Avaliar",
-  footerText: "Sua avaliação nos ajuda a melhorar!",
-  choices: [
-    "[Avaliação]",
-    "⭐ 1 Estrela|encerramento_1|Nada satisfeito", 
-    "⭐⭐ 2 Estrelas|encerramento_2|Pouco satisfeito",
-    "⭐⭐⭐ 3 Estrelas|encerramento_3|Satisfeito",
-    "⭐⭐⭐⭐ 4 Estrelas|encerramento_4|Bem satisfeito",
-    "⭐⭐⭐⭐⭐ 5 Estrelas|encerramento_5|Muito satisfeito"
-  ]
-},
+    type: "list",
+    listButton: "Avaliar",
+    footerText: "Sua avaliação nos ajuda a melhorar!",
+    choices: [
+      "[Avaliação]",
+      "⭐ 1 Estrela|encerramento_1|Nada satisfeito",
+      "⭐⭐ 2 Estrelas|encerramento_2|Pouco satisfeito",
+      "⭐⭐⭐ 3 Estrelas|encerramento_3|Satisfeito",
+      "⭐⭐⭐⭐ 4 Estrelas|encerramento_4|Bem satisfeito",
+      "⭐⭐⭐⭐⭐ 5 Estrelas|encerramento_5|Muito satisfeito"
+    ]
+  },
 
   "encerramento_1_2": {
     text: `😔 Sentimos muito que tenha tido um nível de satisfação tão baixo.
@@ -146,7 +147,7 @@ Bairro`,
     rating: 1
   },
   "encerramento_2": {
-    type: "encerramento_flow", 
+    type: "encerramento_flow",
     rating: 2
   },
   "encerramento_3": {
@@ -163,12 +164,20 @@ Bairro`,
   },
 
   "encerramento_agradecimento": {
-  text: `✅ *Agradecemos o comentário!*
+    text: `✅ *Agradecemos o comentário!*
 
- Volte sempre à Farmácia Oséias! 💊`,
-  footerText: "Sua opinião é muito valiosa para nós!",
-  type: "text"
-},
+Volte sempre à Farmácia Oséias! 💊`,
+    footerText: "Sua opinião é muito valiosa para nós!",
+    type: "text"
+  },
+  "session_ended": {
+    text: `🏁 *Atendimento finalizado*
+  
+Obrigado por entrar em contato com a Farmácia Oséias! 💊
+
+📞 Volte sempre que precisar!`,
+    type: "text"
+  },
 
   "inatividade": {
     text: `⏰ Inatividade detectada ⚠️
@@ -189,18 +198,30 @@ Bairro`,
     nextStep: "delivery_step2",
     field: "endereco"
   },
-  
+
   "delivery_step2": {
     prompt: "📋 *Por favor, mencione o produto ou medicamento desejado:*",
-    nextStep: "delivery_complete",
+    nextStep: "delivery_review",
     field: "produto"
   },
-  
-  "delivery_complete": {
-    prompt: `✅ *Pedido de delivery registrado!* 🚚
 
-📍 *Endereço:* {endereco}
-📦 *Produto solicitado:* {produto}
+  "delivery_review": {
+    prompt: (flowData) => `✅ *Revise seu pedido de delivery* 🚚
+
+🏠 *Endereço:* ${flowData.endereco}
+📦 *Produto solicitado:* ${flowData.produto}
+
+🔄 *Deseja alterar alguma informação?*`,
+    final: false,
+    buttons: [
+      "✅ Confirmar Pedido|delivery_confirmar",
+      "🏠 Editar Endereço|delivery_editar_endereco",
+      "📦 Editar Produto|delivery_editar_produto"
+    ]
+  },
+
+  "delivery_complete": {
+    prompt: `✅ *Pedido de delivery confirmado!* 🚚
 
 ⏳ *Em breve um de nossos atendentes informará o valor do frete e disponibilidade do produto!*`,
     final: true
@@ -210,7 +231,7 @@ Bairro`,
     field: "rating",
     final: false
   },
-  
+
   "encerramento_comment": {
     prompt: "💬 *Comentário recebido!*",
     final: true
@@ -226,42 +247,50 @@ export function processFlowResponse(userId, userMessage, currentState) {
 
   const flow = currentState.flow;
   const step = flowSteps[flow.currentStep];
-  
+
   if (!step) {
     console.log(`❌ Passo não encontrado: ${flow.currentStep}`);
     return null;
   }
 
   console.log(`🔄 Processando passo: ${flow.currentStep}, campo: ${step.field}`);
-  
+
+  if (flow.currentStep === "delivery_review") {
+    return null;
+  }
+
   currentState.flowData = currentState.flowData || {};
   currentState.flowData[step.field] = userMessage;
 
   console.log(`💾 Dados salvos:`, currentState.flowData);
 
-  if (step.nextStep && step.nextStep === "delivery_complete") {
-    console.log(`✅ ÚLTIMO PASSO - Preparando mensagem final...`);
-    
-    const mensagemAtendente = `🚚 *NOVO PEDIDO DE DELIVERY* 🚚
 
-📍 *Endereço:* ${currentState.flowData.endereco}
-📦 *Produto:* ${currentState.flowData.produto}
-👤 *Cliente:* ${userId}
+  if (step.nextStep && step.nextStep === "delivery_review") {
+    console.log(`✅ AVANÇANDO PARA REVISÃO...`);
 
-💬 *Por favor, verifique o valor do frete e disponibilidade do produto!*`;
-    
-    currentState.flow.currentStep = "delivery_complete";
-    
+    currentState.flow.currentStep = "delivery_review";
+    const reviewStep = flowSteps.delivery_review;
+
     return {
-      userResponse: `✅ *Pedido de delivery registrado!* 🚚
+      userResponse: reviewStep.prompt(currentState.flowData),
+      buttons: reviewStep.buttons,
+      complete: false,
+      resetFlow: false
+    };
+  }
 
-📍 *Endereço:* ${currentState.flowData.endereco}
-📦 *Produto solicitado:* ${currentState.flowData.produto}
+  if (flow.editing) {
+    console.log(`✅ VOLTANDO PARA REVISÃO APÓS EDIÇÃO`);
 
-⏳ *Em breve um de nossos atendentes informará o valor do frete e disponibilidade do produto!*`,
-      notifyAttendants: mensagemAtendente,
-      complete: true,
-      resetFlow: true
+    currentState.flow.currentStep = "delivery_review";
+    currentState.flow.editing = false;
+    const reviewStep = flowSteps.delivery_review;
+
+    return {
+      userResponse: reviewStep.prompt(currentState.flowData),
+      buttons: reviewStep.buttons,
+      complete: false,
+      resetFlow: false
     };
   }
 
@@ -269,7 +298,7 @@ export function processFlowResponse(userId, userMessage, currentState) {
     console.log(`➡️ Avançando para: ${step.nextStep}`);
     currentState.flow.currentStep = step.nextStep;
     const nextStep = flowSteps[step.nextStep];
-    
+
     if (nextStep) {
       return {
         userResponse: nextStep.prompt,
@@ -283,7 +312,6 @@ export function processFlowResponse(userId, userMessage, currentState) {
   console.log(`❌ Nenhum próximo passo definido`);
   return null;
 }
-
 export function startFlow(flowType) {
   if (flowType === "delivery") {
     return {

@@ -9,7 +9,7 @@ class UazapiService {
       "Content-Type": "application/json",
       "token": UAZAPI_TOKEN
     };
-    
+
     console.log(`🔧 UAZAPI Service Iniciado: ${this.baseUrl}`);
   }
 
@@ -51,7 +51,7 @@ class UazapiService {
       });
 
       const result = await response.json();
-      
+
       if (response.ok && result.groups) {
         return result.groups.map(grupo => ({
           id: grupo.JID,
@@ -152,10 +152,10 @@ class UazapiService {
     }
   }
 
-    async buscarContatos() {
+  async buscarContatos() {
     try {
       console.log("📇 Buscando contatos da UAZAPI...");
-      
+
       const response = await fetch(`${UAZAPI_URL}/contacts`, {
         method: "GET",
         headers: {
@@ -165,7 +165,6 @@ class UazapiService {
       });
 
       const result = await response.json();
-      console.log("✅ Contatos recebidos:", result);
 
       if (response.ok && Array.isArray(result)) {
         console.log(`📞 Encontrados ${result.length} contatos na UAZAPI`);
@@ -180,7 +179,7 @@ class UazapiService {
     }
   }
 
-    async buscarContatoPorJid(jid) {
+  async buscarContatoPorJid(jid) {
     try {
       const contatos = await this.buscarContatos();
       const contato = contatos.find(c => c.jid === jid);
@@ -190,20 +189,20 @@ class UazapiService {
       return null;
     }
   }
-    async criarMapaContatos() {
+  async criarMapaContatos() {
     try {
       const contatos = await this.buscarContatos();
       const mapaContatos = new Map();
-      
+
       contatos.forEach(contato => {
         if (contato.jid) {
-          const nome = contato.contact_name || 
-                       contato.contact_FirstName || 
-                       contato.jid.replace('@s.whatsapp.net', '');
+          const nome = contato.contact_name ||
+            contato.contact_FirstName ||
+            contato.jid.replace('@s.whatsapp.net', '');
           mapaContatos.set(contato.jid, nome);
         }
       });
-      
+
       console.log(`🗺️ Mapa de contatos criado com ${mapaContatos.size} contatos`);
       return mapaContatos;
     } catch (error) {
@@ -215,7 +214,7 @@ class UazapiService {
   async buscarMensagem(messageId) {
     try {
       console.log(`🔍 Buscando mensagem: ${messageId}`);
-      
+
       const response = await fetch(`${this.baseUrl}/message/find`, {
         method: 'POST',
         headers: this.headers,
@@ -231,9 +230,9 @@ class UazapiService {
 
       const data = await response.json();
       console.log("📦 Mensagem encontrada:", data);
-      
+
       return data;
-      
+
     } catch (error) {
       console.error("❌ Erro ao buscar mensagem:", error);
       return null;
@@ -243,7 +242,7 @@ class UazapiService {
   async downloadMidia(messageId, options = {}) {
     try {
       console.log(`📥 Download de mídia: ${messageId}`);
-      
+
       const payload = {
         id: messageId,
         return_link: true,
@@ -269,9 +268,9 @@ class UazapiService {
         mimetype: data.mimetype,
         hasBase64: !!data.base64Data
       });
-      
+
       return data;
-      
+
     } catch (error) {
       console.error("❌ Erro ao baixar mídia:", error);
       return null;
@@ -281,7 +280,7 @@ class UazapiService {
   async buscarMensagemAlternativo(messageId) {
     try {
       console.log(`🔍 Tentando endpoint alternativo para: ${messageId}`);
-      
+
       const response = await fetch(`${this.baseUrl}/message`, {
         method: 'GET',
         headers: this.headers
@@ -298,7 +297,7 @@ class UazapiService {
       }
 
       throw new Error('Nenhum endpoint funcionou');
-      
+
     } catch (error) {
       console.error("❌ Erro no endpoint alternativo:", error);
       return null;
