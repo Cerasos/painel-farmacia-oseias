@@ -34,71 +34,74 @@ export async function handleWebhook(req, res) {
       flowData: null
     };
 
-    if (userPhone) {
-      if (messageService.isAtendente(userPhone)) {
-        const messageContext = webhookData.message?.content?.contextInfo;
+    if (userPhone && !messageService.isAtendente(userPhone)) {
+      const session = sessionManager.sessions.get(userPhone);
 
-        if (messageContext?.participant) {
-
-          const clientPhone = messageContext.participant;
-          sessionManager.markAttendeeReplyToClient(clientPhone);
-          console.log(`👨‍💼✅ ATENDENTE ${userPhone} RESPONDEU AO CLIENTE ${clientPhone} VIA CONTEXTO`);
-        } else {
-
-          console.log(`👨‍💼 ATENDENTE ${userPhone} enviou mensagem direta`);
+      if (session?.isInEncerramentoFlow) {
+        console.log(`👻🔄 CLIENTE ${userPhone} RESPONDEU APÓS ENCERRAMENTO FANTASMA - RESET COMPLETO`);
 
 
-          const clientPhone = sessionManager.detectClientForAttendeeReply(userPhone);
+        sessionManager.resetSessionCompleta(userPhone);
 
-          if (clientPhone) {
-            sessionManager.markAttendeeReplyToSpecificClient(userPhone, clientPhone);
-            console.log(`👨‍💼✅ ATENDENTE ${userPhone} RESPONDEU para ${clientPhone}`);
-          } else {
-            sessionManager.markAttendeeMessage(userPhone);
-            console.log(`👨‍💼 ATENDENTE ${userPhone} enviou mensagem geral`);
-          }
+
+        currentState = {
+          currentMenu: "menu",
+          firstMessage: true,
+          flow: null,
+          flowData: null
+        };
+        userStates.set(userPhone, currentState);
+
+        console.log(`👻✅ ESTADO COMPLETAMENTE RESETADO para ${userPhone}`);
+      }
+
+
+      sessionManager.markClientActivity(userPhone);
+      console.log(`💬 Cliente ${userPhone} respondeu`);
+    }
+
+
+    if (userPhone && !messageService.isAtendente(userPhone) && !sessionManager.isInEncerramentoFlow(userPhone)) {
+      sessionManager.registerInactivityCallback(userPhone, async (action) => {
+        console.log(`🚀 CALLBACK DE INATIVIDADE: ${action} para ${userPhone}`);
+
+        const currentState = userStates.get(userPhone);
+        const currentMenu = currentState?.currentMenu;
+
+
+        if (currentMenu === "delivery_complete") {
+          console.log(`🚫 INATIVIDADE/ENCERRAMENTO BLOQUEADO - AGUARDANDO PRIMEIRA MENSAGEM DO ATENDENTE: ${userPhone}`);
+          return;
         }
-      } else {
-        sessionManager.resetSession(userPhone);
-        sessionManager.markClientActivity(userPhone);
-        console.log(`💬 Cliente ${userPhone} respondeu`);
-      }
 
-      if (!sessionManager.isInEncerramentoFlow(userPhone)) {
-        sessionManager.registerInactivityCallback(userPhone, async (action) => {
-          console.log(`🚀 CALLBACK DE INATIVIDADE: ${action} para ${userPhone}`);
 
-          const currentState = userStates.get(userPhone);
-          const currentMenu = currentState?.currentMenu;
+        const menusSemInatividade = ["menu", "horarios"];
+        const isMenuSemInatividade = menusSemInatividade.includes(currentMenu);
 
-          const menusSemInatividade = ["menu", "horarios"];
-          const isMenuSemInatividade = menusSemInatividade.includes(currentMenu);
+        if (isMenuSemInatividade) {
+          console.log(`🚫 INATIVIDADE BLOQUEADA para: ${currentMenu}`);
+          return;
+        }
 
-          if (isMenuSemInatividade) {
-            console.log(`🚫 INATIVIDADE BLOQUEADA para: ${currentMenu}`);
-            return;
-          }
-
-          if (action === "encerramento") {
-            await messageService.sendMessageWithButtons(userPhone, {
-              text: `📢 Obrigado por entrar em contato com a Farmácia Oséias! 💊\n\n😊 Esperamos que volte sempre!\n\n📋 Como foi sua experiência?`,
-              type: "list",
-              listButton: "⭐ Avaliar Atendimento",
-              footerText: "Sua avaliação nos ajuda a melhorar!",
-              choices: [
-                "[Avaliação do Atendimento]",
-                "⭐ 1 Estrela|encerramento_1|Nada satisfeito",
-                "⭐⭐ 2 Estrelas|encerramento_2|Pouco satisfeito",
-                "⭐⭐⭐ 3 Estrelas|encerramento_3|Satisfeito",
-                "⭐⭐⭐⭐ 4 Estrelas|encerramento_4|Bem satisfeito",
-                "⭐⭐⭐⭐⭐ 5 Estrelas|encerramento_5|Muito satisfeito"
-              ]
-            });
-          } else if (action === "inatividade") {
-            await messageService.sendMessageWithButtons(userPhone, menuFlows.inatividade);
-          }
-        });
-      }
+        if (action === "encerramento") {
+          await messageService.sendMessageWithButtons(userPhone, {
+            text: `📢 Obrigado por entrar em contato com a Farmácia Oséias! 💊\n\n😊 Esperamos que volte sempre!\n\n📋 Como foi sua experiência?`,
+            type: "list",
+            listButton: "⭐ Avaliar Atendimento",
+            footerText: "Sua avaliação nos ajuda a melhorar!",
+            choices: [
+              "[Avaliação do Atendimento]",
+              "⭐ 1 Estrela|encerramento_1|Nada satisfeito",
+              "⭐⭐ 2 Estrelas|encerramento_2|Pouco satisfeito",
+              "⭐⭐⭐ 3 Estrelas|encerramento_3|Satisfeito",
+              "⭐⭐⭐⭐ 4 Estrelas|encerramento_4|Bem satisfeito",
+              "⭐⭐⭐⭐⭐ 5 Estrelas|encerramento_5|Muito satisfeito"
+            ]
+          });
+        } else if (action === "inatividade") {
+          await messageService.sendMessageWithButtons(userPhone, menuFlows.inatividade);
+        }
+      });
     }
 
     const message = webhookData.message;
@@ -111,6 +114,50 @@ export async function handleWebhook(req, res) {
       console.log(`📦 MÍDIA DETECTADA: ${mediaType} | ID: ${messageId}`);
     }
 
+    if (userPhone && messageService.isAtendente(userPhone) && userMessage && !buttonClicked) {
+      console.log(`👨‍💼 ATENDENTE ${userPhone} enviou mensagem direta: "${userMessage}"`);
+
+      const clientPhone = sessionManager.detectClientForAttendeeReply(userPhone);
+
+      if (clientPhone) {
+        console.log(`👨‍💼✅ ATENDENTE ${userPhone} RESPONDEU para ${clientPhone} - MENSAGEM: "${userMessage}"`);
+        sessionManager.markAttendeeDirectMessage(clientPhone);
+
+        const clientState = userStates.get(clientPhone);
+        if (clientState && clientState.currentMenu === "delivery_complete") {
+          console.log(`🔄 MUDANDO ESTADO: ${clientPhone} de delivery_complete para atendimento_ativo`);
+          clientState.currentMenu = "atendimento_ativo";
+        }
+
+      } else {
+        console.log(`👨‍💼 ATENDENTE ${userPhone} enviou mensagem geral`);
+        sessionManager.markAttendeeMessage(userPhone);
+      }
+    }
+    if (buttonClicked && userPhone && !messageService.isAtendente(userPhone)) {
+      const session = sessionManager.sessions.get(userPhone);
+
+      if (session?.isInEncerramentoFlow && !buttonClicked.startsWith("encerramento_")) {
+        console.log(`👻🚫 CLIENTE ${userPhone} CLICOU EM BOTÃO ANTIGO APÓS ENCERRAMENTO FANTASMA: ${buttonClicked}`);
+        console.log(`👻🔄 IGNORANDO BOTÃO E REENVIANDO MENU INICIAL`);
+
+        sessionManager.resetSessionCompleta(userPhone);
+
+        currentState = {
+          currentMenu: "menu",
+          firstMessage: true,
+          flow: null,
+          flowData: null
+        };
+        userStates.set(userPhone, currentState);
+
+        await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow("menu"));
+        sessionManager.markBotMessage(userPhone);
+
+        return res.status(200).json({ success: true });
+      }
+    }
+
     if (buttonClicked) {
       console.log(`🎯 BOTÃO CLICADO DETECTADO: ${buttonClicked}`);
 
@@ -118,18 +165,13 @@ export async function handleWebhook(req, res) {
 
       messageStorage.salvarMensagem(userPhone, `[BOTÃO: ${buttonClicked}]`, 'received', 'text');
 
-      if (buttonClicked === "atendente" || buttonClicked === "aguardar atendente") {
-        sessionManager.markContactedAttendee(userPhone);
-        console.log(`📞 USUÁRIO ${userPhone} SOLICITOU ATENDENTE - ATIVANDO FLUXO COMPLETO`);
-      }
-
       if (buttonClicked.startsWith("encerramento_")) {
         const rating = parseInt(buttonClicked.replace("encerramento_", ""));
+
 
         sessionManager.startEncerramentoFlow(userPhone, rating);
 
         sessionManager.unregisterInactivityCallback(userPhone);
-
         if (rating <= 2) {
           await messageService.sendMessageWithButtons(userPhone, {
             text: menuFlows.encerramento_1_2.text,
@@ -144,7 +186,14 @@ export async function handleWebhook(req, res) {
           });
         }
 
+        sessionManager.markBotMessage(userPhone);
+
         return res.status(200).json({ success: true });
+      }
+
+      if (buttonClicked === "atendente" || buttonClicked === "aguardar atendente") {
+        sessionManager.markContactedAttendee(userPhone);
+        console.log(`📞 USUÁRIO ${userPhone} SOLICITOU ATENDENTE - ATIVANDO FLUXO COMPLETO`);
       }
 
       if (buttonClicked === "delivery" || buttonClicked === "produtos" || buttonClicked === "duvidasgerais") {
@@ -167,6 +216,8 @@ export async function handleWebhook(req, res) {
 
       if (buttonClicked.startsWith("delivery_")) {
         if (buttonClicked === "delivery_confirmar") {
+
+          sessionManager.markDeliveryRegistered(userPhone);
           console.log("✅ PEDIDO DE DELIVERY CONFIRMADO");
 
           const mensagemAtendente = `🚚 *NOVO PEDIDO DE DELIVERY* 🚚
@@ -367,13 +418,19 @@ export async function handleWebhook(req, res) {
             }
           }
 
-          if (currentState.firstMessage) {
-            console.log("🎯 PRIMEIRA MENSAGEM - Mostrando menu");
+
+          const session = sessionManager.sessions.get(userPhone);
+          const isAfterEncerramentoFantasma = session && !session.isInEncerramentoFlow &&
+            session.hasContactedAttendee === false &&
+            session.hasUsedService === false;
+
+          if (currentState.firstMessage || isAfterEncerramentoFantasma) {
+            console.log("🎯 PRIMEIRA MENSAGEM REAL - Mostrando menu");
             await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow("menu"));
             currentState.firstMessage = false;
             sessionManager.markBotMessage(userPhone);
           } else {
-            console.log("🎯 MENSAGEM SEGUINTE - Mantendo fluxo atual");
+            console.log("🎯 MENSAGEM SEGUINTE - Mantendo fluxo atual (não mostra menu)");
           }
 
           userStates.set(userPhone, currentState);

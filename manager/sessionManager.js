@@ -4,9 +4,11 @@ class SessionManager {
     this.INACTIVITY_TIME = 10 * 1000;
     this.WARNING_TIME = 5 * 1000;
     this.ENCRRAMENTO_TIMEOUT = 5 * 60 * 1000;
+    this.ENCERRAMENTO_FANTASMA = 15 * 1000;
     this.inactivityCallbacks = new Map();
     this.lastMessageFrom = new Map();
     this.lastActiveClient = null;
+    this.encerramentoFantasmaEnviado = new Set();
     console.log("🕒 SESSION MANAGER INICIADO - Verificando inatividade a cada 5s");
     this.startInactivityCheckInterval();
   }
@@ -14,7 +16,132 @@ class SessionManager {
   startInactivityCheckInterval() {
     setInterval(() => {
       this.checkAllSessionsInactivity();
+      this.checkEncerramentoFantasma();
     }, 5 * 1000);
+  }
+
+
+  checkEncerramentoFantasma() {
+    const now = Date.now();
+    console.log(`\n👻 VERIFICANDO ENCERRAMENTO FANTASMA - ${this.sessions.size} sessões`);
+
+    for (const [userId, session] of this.sessions) {
+      const isAtendente = this.isAtendente(userId);
+      if (isAtendente) continue;
+
+      const inactiveTime = now - session.lastActivity;
+      const lastFrom = this.getLastMessageFrom(userId);
+
+      console.log(`👻 CLIENTE ${userId}: ${Math.round(inactiveTime / 1000)}s inativo | lastFrom: ${lastFrom} | isInEncerramentoFlow: ${session.isInEncerramentoFlow}`);
+
+      const isWaitingAttendee = session.waitingAttendeeResponse;
+      if (isWaitingAttendee) {
+        console.log(`🚫 ENCERRAMENTO FANTASMA BLOQUEADO - CLIENTE AGUARDANDO ATENDENTE: ${userId}`);
+        continue;
+      }
+
+      const jaEnviouEncerramento = this.encerramentoFantasmaEnviado.has(userId);
+
+      const shouldEncerrarFantasma =
+        session.isInEncerramentoFlow &&
+        inactiveTime >= this.ENCERRAMENTO_FANTASMA &&
+        !jaEnviouEncerramento;
+
+      if (shouldEncerrarFantasma) {
+        console.log(`👻⚡ ENCERRAMENTO FANTASMA ATIVADO para ${userId} (${Math.round(inactiveTime / 1000)}s inativo)`);
+        this.encerramentoFantasma(userId);
+      } else if (jaEnviouEncerramento) {
+        console.log(`👻✅ ENCERRAMENTO FANTASMA JÁ ENVIADO para ${userId} - IGNORANDO`);
+      }
+    }
+  }
+
+  async encerramentoFantasma(userId) {
+    let session = this.sessions.get(userId);
+    if (session) {
+      console.log(`👻🏁 ENCERRANDO ATENDIMENTO FANTASMA para ${userId}`);
+
+
+      this.encerramentoFantasmaEnviado.add(userId);
+
+
+      try {
+        console.log(`👻📝 ENVIANDO MENSAGEM DE ENCERRAMENTO FANTASMA para ${userId}`);
+
+
+        const messageService = await import('../services/messageService.js');
+
+        await messageService.default.sendMessageWithButtons(userId, {
+          text: `*⏳ Atendimento encerrado por inatividade*`,
+          type: "text",
+          footerText: "Fique à vontade para iniciar um novo atendimento quando quiser!"
+        });
+
+        console.log(`👻✅ MENSAGEM DE ENCERRAMENTO ENVIADA para ${userId}`);
+      } catch (error) {
+        console.error(`👻❌ ERRO AO ENVIAR MENSAGEM DE ENCERRAMENTO:`, error);
+      }
+
+
+      if (session.encerramentoFlow) {
+        if (session.encerramentoFlow.timeout) {
+          clearTimeout(session.encerramentoFlow.timeout);
+        }
+        session.encerramentoFlow = null;
+      }
+
+
+      session.isInEncerramentoFlow = false;
+      session.waitingClientResponse = false;
+      session.inactivityWarningSent = false;
+      session.avaliacaoSent = false;
+      session.inatividadeSentTime = null;
+      session.hasContactedAttendee = false;
+      session.hasUsedService = false;
+
+
+      session.lastActivity = Date.now();
+
+
+      this.unregisterInactivityCallback(userId);
+
+      console.log(`👻✅ ATENDIMENTO FANTASMA FINALIZADO para ${userId} - CLIENTE LIVRE PARA NOVO ATENDIMENTO`);
+    }
+  }
+
+
+  resetSessionCompleta(userId) {
+    let session = this.sessions.get(userId);
+    if (session) {
+      console.log(`🔄🔄🔄 RESET COMPLETO DA SESSÃO para ${userId}`);
+
+
+      this.encerramentoFantasmaEnviado.delete(userId);
+
+
+      session.lastActivity = Date.now();
+      session.waitingClientResponse = false;
+      session.inactivityWarningSent = false;
+      session.avaliacaoSent = false;
+      session.inatividadeSentTime = null;
+      session.isInEncerramentoFlow = false;
+      session.hasContactedAttendee = false;
+      session.hasUsedService = false;
+
+
+      if (session.encerramentoFlow) {
+        if (session.encerramentoFlow.timeout) {
+          clearTimeout(session.encerramentoFlow.timeout);
+        }
+        session.encerramentoFlow = null;
+      }
+
+
+      this.unregisterInactivityCallback(userId);
+
+
+      this.setLastMessageFrom(userId, 'none');
+    }
   }
 
   setLastActiveClient(clientPhone) {
@@ -71,7 +198,6 @@ class SessionManager {
           this.triggerInactivityCallback(userId, "inatividade");
         }
 
-
         const timeSinceWarning = session.inatividadeSentTime ? (now - session.inatividadeSentTime) : 0;
         if (session.inatividadeSentTime &&
           timeSinceWarning >= this.WARNING_TIME &&
@@ -109,7 +235,6 @@ class SessionManager {
       session = this.startSession(userId);
     }
 
-
     session.lastActivity = Date.now();
     session.inactivityWarningSent = false;
     session.avaliacaoSent = false;
@@ -125,15 +250,16 @@ class SessionManager {
       session = this.startSession(clientPhone);
     }
 
-
     session.lastActivity = Date.now();
     session.inactivityWarningSent = false;
     session.avaliacaoSent = false;
     session.inatividadeSentTime = null;
+
     session.isInEncerramentoFlow = false;
+
     this.setLastMessageFrom(clientPhone, 'attendee');
 
-    console.log(`👨‍💼✅ ATENDENTE RESPONDEU para ${clientPhone} - RESETANDO INATIVIDADE`);
+    console.log(`👨‍💼✅ ATENDENTE RESPONDEU para ${clientPhone} - RESETANDO INATIVIDADE E ENCERRAMENTO FLOW`);
   }
 
   markAttendeeDirectMessage(clientPhone) {
@@ -142,26 +268,25 @@ class SessionManager {
       session = this.startSession(clientPhone);
     }
 
-
     session.lastActivity = Date.now();
     session.waitingClientResponse = true;
     session.waitingAttendeeResponse = false;
     session.inactivityWarningSent = false;
     session.avaliacaoSent = false;
     session.inatividadeSentTime = null;
+
     session.isInEncerramentoFlow = false;
+
     this.setLastMessageFrom(clientPhone, 'attendee');
 
-    console.log(`👨‍💼✅ ATENDENTE MANDOU MENSAGEM DIRETA para ${clientPhone} - AGORA CLIENTE PRECISA RESPONDER (INATIVIDADE LIGADA)`);
+    console.log(`👨‍💼✅ ATENDENTE MANDOU MENSAGEM DIRETA para ${clientPhone} - AGORA CLIENTE PRECISA RESPONDER (INATIVIDADE LIGADA) E RESETANDO ENCERRAMENTO FLOW`);
   }
-
 
   markAttendeeReplyToSpecificClient(attendeePhone, clientPhone) {
     let session = this.sessions.get(clientPhone);
     if (!session) {
       session = this.startSession(clientPhone);
     }
-
 
     session.lastActivity = Date.now();
     session.inactivityWarningSent = false;
@@ -192,6 +317,8 @@ class SessionManager {
     }
 
 
+    this.encerramentoFantasmaEnviado.delete(userId);
+
     session.lastActivity = Date.now();
     session.inactivityWarningSent = false;
     session.avaliacaoSent = false;
@@ -199,12 +326,10 @@ class SessionManager {
     session.waitingClientResponse = false;
     this.setLastMessageFrom(userId, 'client');
 
-
     this.setLastActiveClient(userId);
 
     console.log(`💬✅ CLIENTE ${userId} RESPONDEU - CANCELANDO INATIVIDADE COMPLETAMENTE`);
   }
-
 
   resetSession(userId) {
     let session = this.sessions.get(userId);
@@ -235,7 +360,6 @@ class SessionManager {
       session = this.startSession(userId);
     }
     session.hasContactedAttendee = true;
-
 
     this.setLastActiveClient(userId);
 
@@ -331,14 +455,11 @@ class SessionManager {
     return atendentes.includes(userId);
   }
 
-
   detectClientForAttendeeReply(attendeePhone) {
-
     if (this.lastActiveClient) {
       console.log(`🎯 USANDO ÚLTIMO CLIENTE ATIVO: ${this.lastActiveClient}`);
       return this.lastActiveClient;
     }
-
 
     for (const [clientId, session] of this.sessions) {
       if (!this.isAtendente(clientId) && session.hasContactedAttendee) {
