@@ -37,13 +37,9 @@ export async function handleWebhook(req, res) {
     if (userPhone && !messageService.isAtendente(userPhone)) {
       const session = sessionManager.sessions.get(userPhone);
 
-      if (session?.isInEncerramentoFlow) {
+      if (session?.encerramentoFantasmaSent && !session.isInEncerramentoFlow) {
         console.log(`👻🔄 CLIENTE ${userPhone} RESPONDEU APÓS ENCERRAMENTO FANTASMA - RESET COMPLETO`);
-
-
         sessionManager.resetSessionCompleta(userPhone);
-
-
         currentState = {
           currentMenu: "menu",
           firstMessage: true,
@@ -51,15 +47,15 @@ export async function handleWebhook(req, res) {
           flowData: null
         };
         userStates.set(userPhone, currentState);
-
         console.log(`👻✅ ESTADO COMPLETAMENTE RESETADO para ${userPhone}`);
       }
 
 
-      sessionManager.markClientActivity(userPhone);
-      console.log(`💬 Cliente ${userPhone} respondeu`);
+      if (!sessionManager.isInEncerramentoFlow(userPhone)) {
+        sessionManager.markClientActivity(userPhone);
+        console.log(`💬 Cliente ${userPhone} respondeu`);
+      }
     }
-
 
     if (userPhone && !messageService.isAtendente(userPhone) && !sessionManager.isInEncerramentoFlow(userPhone)) {
       sessionManager.registerInactivityCallback(userPhone, async (action) => {
@@ -68,12 +64,10 @@ export async function handleWebhook(req, res) {
         const currentState = userStates.get(userPhone);
         const currentMenu = currentState?.currentMenu;
 
-
         if (currentMenu === "delivery_complete") {
           console.log(`🚫 INATIVIDADE/ENCERRAMENTO BLOQUEADO - AGUARDANDO PRIMEIRA MENSAGEM DO ATENDENTE: ${userPhone}`);
           return;
         }
-
 
         const menusSemInatividade = ["menu", "horarios"];
         const isMenuSemInatividade = menusSemInatividade.includes(currentMenu);
@@ -134,6 +128,7 @@ export async function handleWebhook(req, res) {
         sessionManager.markAttendeeMessage(userPhone);
       }
     }
+
     if (buttonClicked && userPhone && !messageService.isAtendente(userPhone)) {
       const session = sessionManager.sessions.get(userPhone);
 
@@ -167,7 +162,6 @@ export async function handleWebhook(req, res) {
 
       if (buttonClicked.startsWith("encerramento_")) {
         const rating = parseInt(buttonClicked.replace("encerramento_", ""));
-
 
         sessionManager.startEncerramentoFlow(userPhone, rating);
 
@@ -356,85 +350,88 @@ export async function handleWebhook(req, res) {
         messageStorage.salvarMensagem(userPhone, userMessage, 'received', 'text');
         console.log("💾 Mensagem de texto salva");
 
-        if (!messageService.isAtendente(userPhone)) {
+
+        if (!messageService.isAtendente(userPhone) && !sessionManager.isInEncerramentoFlow(userPhone)) {
           await messageService.enviarAlertaAtendente(userPhone, userMessage);
-
-          if (sessionManager.isInEncerramentoFlow(userPhone)) {
-            console.log("💬 PROCESSANDO COMENTÁRIO DE AVALIAÇÃO");
-            sessionManager.processEncerramentoComment(userPhone, userMessage);
-
-            await messageService.sendMessageWithButtons(userPhone, menuFlows.encerramento_agradecimento);
-            sessionManager.markBotMessage(userPhone);
-
-            console.log(`🏁 ATENDIMENTO FINALIZADO para ${userPhone} - RESETANDO ESTADO`);
-            sessionManager.endEncerramentoFlow(userPhone);
-            sessionManager.unregisterInactivityCallback(userPhone);
-            userStates.set(userPhone, {
-              currentMenu: "menu",
-              firstMessage: true,
-              flow: null,
-              flowData: null
-            });
-
-            return res.status(200).json({ success: true });
-          }
-
-          if (currentState.flow) {
-            console.log(`🔄 Usuário ${userPhone} está no fluxo:`, currentState.flow.currentStep);
-
-            const flowResult = processFlowResponse(userPhone, userMessage, currentState);
-
-            if (flowResult) {
-              if (flowResult.buttons) {
-                await messageService.sendMessageWithButtons(userPhone, {
-                  text: flowResult.userResponse,
-                  choices: flowResult.buttons
-                });
-              } else {
-                await messageService.sendMessageWithButtons(userPhone, {
-                  text: flowResult.userResponse
-                });
-              }
-
-              sessionManager.markBotMessage(userPhone);
-
-              if (flowResult.notifyAttendants && flowResult.complete) {
-                for (const atendente of ATENDENTES) {
-                  await messageService.sendMessageWithButtons(atendente, {
-                    text: flowResult.notifyAttendants
-                  }, true);
-                }
-              }
-
-              if (flowResult.resetFlow && flowResult.complete) {
-                currentState.flow = null;
-                currentState.flowData = null;
-                currentState.currentMenu = "menu";
-                currentState.firstMessage = true;
-              }
-
-              userStates.set(userPhone, currentState);
-              return res.status(200).json({ success: true });
-            }
-          }
+        }
 
 
-          const session = sessionManager.sessions.get(userPhone);
-          const isAfterEncerramentoFantasma = session && !session.isInEncerramentoFlow &&
-            session.hasContactedAttendee === false &&
-            session.hasUsedService === false;
+        if (sessionManager.isInEncerramentoFlow(userPhone)) {
+          console.log("💬 PROCESSANDO COMENTÁRIO DE AVALIAÇÃO");
+          sessionManager.processEncerramentoComment(userPhone, userMessage);
 
-          if (currentState.firstMessage || isAfterEncerramentoFantasma) {
-            console.log("🎯 PRIMEIRA MENSAGEM REAL - Mostrando menu");
-            await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow("menu"));
-            currentState.firstMessage = false;
-            sessionManager.markBotMessage(userPhone);
-          } else {
-            console.log("🎯 MENSAGEM SEGUINTE - Mantendo fluxo atual (não mostra menu)");
-          }
+          await messageService.sendMessageWithButtons(userPhone, menuFlows.encerramento_agradecimento);
+          sessionManager.markBotMessage(userPhone);
+
+          console.log(`🏁 ATENDIMENTO FINALIZADO para ${userPhone} - RESETANDO ESTADO COMPLETO`);
+          sessionManager.endEncerramentoFlow(userPhone);
+          sessionManager.unregisterInactivityCallback(userPhone);
+
+          currentState = {
+            currentMenu: "menu",
+            firstMessage: true,
+            flow: null,
+            flowData: null
+          };
 
           userStates.set(userPhone, currentState);
+
+          return res.status(200).json({ success: true });
         }
+        if (currentState.flow) {
+          console.log(`🔄 Usuário ${userPhone} está no fluxo:`, currentState.flow.currentStep);
+
+          const flowResult = processFlowResponse(userPhone, userMessage, currentState);
+
+          if (flowResult) {
+            if (flowResult.buttons) {
+              await messageService.sendMessageWithButtons(userPhone, {
+                text: flowResult.userResponse,
+                choices: flowResult.buttons
+              });
+            } else {
+              await messageService.sendMessageWithButtons(userPhone, {
+                text: flowResult.userResponse
+              });
+            }
+
+            sessionManager.markBotMessage(userPhone);
+
+            if (flowResult.notifyAttendants && flowResult.complete) {
+              for (const atendente of ATENDENTES) {
+                await messageService.sendMessageWithButtons(atendente, {
+                  text: flowResult.notifyAttendants
+                }, true);
+              }
+            }
+
+            if (flowResult.resetFlow && flowResult.complete) {
+              currentState.flow = null;
+              currentState.flowData = null;
+              currentState.currentMenu = "menu";
+              currentState.firstMessage = true;
+            }
+
+            userStates.set(userPhone, currentState);
+            return res.status(200).json({ success: true });
+          }
+        }
+
+        const session = sessionManager.sessions.get(userPhone);
+        const isAfterEncerramentoFantasma = session && !session.isInEncerramentoFlow &&
+          session.hasContactedAttendee === false &&
+          session.hasUsedService === false;
+
+        if (currentState.firstMessage || isAfterEncerramentoFantasma) {
+          console.log("🎯 PRIMEIRA MENSAGEM REAL - Mostrando menu");
+          await messageService.sendMessageWithButtons(userPhone, messageService.getMenuFlow("menu"));
+          currentState.firstMessage = false;
+          sessionManager.markBotMessage(userPhone);
+        } else {
+          console.log("🎯 MENSAGEM SEGUINTE - Mantendo fluxo atual (não mostra menu)");
+        }
+
+        userStates.set(userPhone, currentState);
       }
     }
 

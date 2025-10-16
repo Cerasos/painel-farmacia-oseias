@@ -1737,28 +1737,68 @@
       event.currentTarget.classList.add('active');
     }
 
+    async function sendEncerramentoFlow() {
+      if (!currentConversation) {
+        alert('Selecione uma conversa primeiro!');
+        closeModal();
+        return;
+      }
+
+      try {
+        console.log(`🎯 PAINEL: Enviando fluxo de encerramento para ${currentConversation.phone}`);
+
+        const response = await fetch('/api/enviar-rapido', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: currentConversation.phone,
+            tipo: 'encerramento'
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          console.log('✅ Fluxo de encerramento enviado com sucesso');
+          closeModal();
+
+          setTimeout(() => {
+            loadMessages(currentConversation.phone);
+          }, 1000);
+
+        } else {
+          alert('❌ Erro ao enviar avaliação: ' + (data.error || 'Erro desconhecido'));
+        }
+      } catch (error) {
+        console.error('Erro ao enviar fluxo de encerramento:', error);
+        alert('❌ Erro ao enviar avaliação');
+      } finally {
+        closeModal();
+      }
+    }
+
     function openModal(tipo) {
       const modal = document.getElementById('modal');
       const modalContent = document.getElementById('modalContent');
 
       if (tipo === 'encerrar') {
         modalContent.innerHTML = `
-          <h3>Encerrar atendimento</h3>
-          <p>Tem certeza que deseja encerrar o atendimento?</p>
-          <div class="modal-buttons">
-            <button class="confirm" onclick="closeModal()">Sim</button>
-            <button class="cancel" onclick="closeModal()">Não</button>
-          </div>
-        `;
+      <h3>Encerrar Atendimento</h3>
+      <p>Deseja enviar a avaliação de atendimento para o cliente?</p>
+      <div class="modal-buttons">
+        <button class="confirm" onclick="sendEncerramentoFlow()">✅ Sim, Enviar Avaliação</button>
+        <button class="cancel" onclick="closeModal()">❌ Cancelar</button>
+      </div>
+    `;
       } else if (tipo === 'pagamento') {
         modalContent.innerHTML = `
-          <h3>Gerar pagamento</h3>
-          <input type="text" id="paymentValue" placeholder="Valor (ex: 79,90)" />
-          <div class="modal-buttons">
-            <button class="confirm" onclick="generatePayment()">Gerar link</button>
-            <button class="cancel" onclick="closeModal()">Fechar</button>
-          </div>
-        `;
+      <h3>Gerar pagamento</h3>
+      <input type="text" id="paymentValue" placeholder="Valor (ex: 79,90)" />
+      <div class="modal-buttons">
+        <button class="confirm" onclick="generatePayment()">Gerar link</button>
+        <button class="cancel" onclick="closeModal()">Fechar</button>
+      </div>
+    `;
       }
 
       modal.classList.add('active');

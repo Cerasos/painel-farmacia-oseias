@@ -61,58 +61,139 @@ router.post("/enviar-rapido", async (req, res) => {
 
     console.log(`📤 ENVIANDO MENSAGEM RÁPIDA: para ${to}, tipo: ${tipo}`);
 
-    let messageText = '';
+    let messagePayload = null;
+
     switch (tipo) {
       case 'delivery':
-        messageText = `🚚 *Solicitar delivery* ✔️
+        messagePayload = {
+          text: `🚚 *Solicitar delivery* ✔️
 
 📍 Área de cobertura: Centro e bairros próximos
 💰 Taxa de entrega: Variável a depender da distância, consultar valor com atendente.
 
 📍 *Insira seu endereço neste modelo:*
 Rua/número/complemento
-Bairro`;
+Bairro`
+        };
         break;
+
       case 'menu':
-        messageText = `📢 Olá! Seja muito bem-vindo à Farmácia Oséias! 💊
+        messagePayload = {
+          text: `📢 Olá! Seja muito bem-vindo à Farmácia Oséias! 💊
 
 📍 *Endereço físico*: Avenida Nereu Ramos, 141 – Centro
 🕒 *Horário de atendimento*: 08h00 às 22h00 (GMT-3)
 
-💬 Como podemos te ajudar hoje?`;
+💬 Como podemos te ajudar hoje?`
+        };
         break;
+
       case 'horarios':
-        messageText = `⏰ *Atendimento especializado* ✔️
+        messagePayload = {
+          text: `⏰ *Atendimento especializado* ✔️
 
 🕒 *Oséias*: segunda à sexta das 16:00 às 19:00.
 
 🕒 *Carol*, filha do Oséias: segunda à sabado das 08:00 às 14:00.
 
 🏪 *Farmácia Oséias*
-📍 Avenida Nereu Ramos, 141 – Centro`;
+📍 Avenida Nereu Ramos, 141 – Centro`
+        };
         break;
+
+      case 'encerramento':
+        messagePayload = {
+          text: `📢 Obrigado por entrar em contato com a Farmácia Oséias! 💊\n\n😊 Esperamos que volte sempre!\n\n📋 Como foi sua experiência?`,
+          type: "list",
+          listButton: "⭐ Avaliar Atendimento",
+          footerText: "Sua avaliação nos ajuda a melhorar!",
+          choices: [
+            "[Avaliação do Atendimento]",
+            "⭐ 1 Estrela|encerramento_1|Nada satisfeito",
+            "⭐⭐ 2 Estrelas|encerramento_2|Pouco satisfeito",
+            "⭐⭐⭐ 3 Estrelas|encerramento_3|Satisfeito",
+            "⭐⭐⭐⭐ 4 Estrelas|encerramento_4|Bem satisfeito",
+            "⭐⭐⭐⭐⭐ 5 Estrelas|encerramento_5|Muito satisfeito"
+          ]
+        };
+        break;
+
       default:
-        messageText = '💬 Em que posso ajudar?';
+        messagePayload = {
+          text: '💬 Em que posso ajudar?'
+        };
     }
-    const response = await fetch(`${UAZAPI_URL}/message/sendText/${UAZAPI_TOKEN}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to: to,
-        text: messageText
-      })
-    });
+
+    let response;
+
+    if (messagePayload.type === "list") {
+      console.log(`📋 ENVIANDO LISTA DE AVALIAÇÃO para ${to}`);
+      response = await fetch(`${UAZAPI_URL}/message/sendList/${UAZAPI_TOKEN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: to,
+          text: messagePayload.text,
+          listButton: messagePayload.listButton,
+          title: messagePayload.text.split('\n')[0],
+          sections: [
+            {
+              title: "Avaliação do Atendimento",
+              rows: [
+                {
+                  title: "⭐ 1 Estrela",
+                  description: "Nada satisfeito",
+                  rowId: "encerramento_1"
+                },
+                {
+                  title: "⭐⭐ 2 Estrelas",
+                  description: "Pouco satisfeito",
+                  rowId: "encerramento_2"
+                },
+                {
+                  title: "⭐⭐⭐ 3 Estrelas",
+                  description: "Satisfeito",
+                  rowId: "encerramento_3"
+                },
+                {
+                  title: "⭐⭐⭐⭐ 4 Estrelas",
+                  description: "Bem satisfeito",
+                  rowId: "encerramento_4"
+                },
+                {
+                  title: "⭐⭐⭐⭐⭐ 5 Estrelas",
+                  description: "Muito satisfeito",
+                  rowId: "encerramento_5"
+                }
+              ]
+            }
+          ],
+          footerText: messagePayload.footerText
+        })
+      });
+    } else {
+      response = await fetch(`${UAZAPI_URL}/message/sendText/${UAZAPI_TOKEN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: to,
+          text: messagePayload.text
+        })
+      });
+    }
 
     const data = await response.json();
 
     if (data.success) {
-      console.log(`✅ MENSAGEM RÁPIDA ENVIADA COM SUCESSO para ${to}`);
+      console.log(`✅ MENSAGEM RÁPIDA ENVIADA COM SUCESSO para ${to} - tipo: ${tipo}`);
 
+      const messageText = tipo === 'encerramento' ? '[LISTA DE AVALIAÇÃO ENVIADA]' : messagePayload.text;
       const messageSaved = messageStorage.salvarMensagem(to, messageText, 'sent', 'text');
 
       if (messageSaved) {
         console.log(`💾 MENSAGEM RÁPIDA SALVA NO STORAGE: ${to} - tipo: ${tipo}`);
       }
+
       sessionManager.markAttendeeMessage(to);
 
       console.log(`👨‍💼✅ ATENDENTE ENVIOU MENSAGEM RÁPIDA VIA PAINEL - AGUARDANDO RESPOSTA DO CLIENTE ${to}`);

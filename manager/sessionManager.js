@@ -20,7 +20,6 @@ class SessionManager {
     }, 5 * 1000);
   }
 
-
   checkEncerramentoFantasma() {
     const now = Date.now();
     console.log(`\n👻 VERIFICANDO ENCERRAMENTO FANTASMA - ${this.sessions.size} sessões`);
@@ -61,13 +60,10 @@ class SessionManager {
     if (session) {
       console.log(`👻🏁 ENCERRANDO ATENDIMENTO FANTASMA para ${userId}`);
 
-
       this.encerramentoFantasmaEnviado.add(userId);
-
 
       try {
         console.log(`👻📝 ENVIANDO MENSAGEM DE ENCERRAMENTO FANTASMA para ${userId}`);
-
 
         const messageService = await import('../services/messageService.js');
 
@@ -82,14 +78,12 @@ class SessionManager {
         console.error(`👻❌ ERRO AO ENVIAR MENSAGEM DE ENCERRAMENTO:`, error);
       }
 
-
       if (session.encerramentoFlow) {
         if (session.encerramentoFlow.timeout) {
           clearTimeout(session.encerramentoFlow.timeout);
         }
         session.encerramentoFlow = null;
       }
-
 
       session.isInEncerramentoFlow = false;
       session.waitingClientResponse = false;
@@ -98,10 +92,9 @@ class SessionManager {
       session.inatividadeSentTime = null;
       session.hasContactedAttendee = false;
       session.hasUsedService = false;
-
+      session.encerramentoFantasmaSent = true;
 
       session.lastActivity = Date.now();
-
 
       this.unregisterInactivityCallback(userId);
 
@@ -109,15 +102,12 @@ class SessionManager {
     }
   }
 
-
   resetSessionCompleta(userId) {
     let session = this.sessions.get(userId);
     if (session) {
       console.log(`🔄🔄🔄 RESET COMPLETO DA SESSÃO para ${userId}`);
 
-
       this.encerramentoFantasmaEnviado.delete(userId);
-
 
       session.lastActivity = Date.now();
       session.waitingClientResponse = false;
@@ -127,7 +117,7 @@ class SessionManager {
       session.isInEncerramentoFlow = false;
       session.hasContactedAttendee = false;
       session.hasUsedService = false;
-
+      session.encerramentoFantasmaSent = false;
 
       if (session.encerramentoFlow) {
         if (session.encerramentoFlow.timeout) {
@@ -136,9 +126,7 @@ class SessionManager {
         session.encerramentoFlow = null;
       }
 
-
       this.unregisterInactivityCallback(userId);
-
 
       this.setLastMessageFrom(userId, 'none');
     }
@@ -180,7 +168,6 @@ class SessionManager {
       const lastFrom = this.getLastMessageFrom(userId);
 
       console.log(`⏰ CLIENTE ${userId}: ${Math.round(inactiveTime / 1000)}s inativo | lastFrom: ${lastFrom} | warningSent: ${session.inactivityWarningSent} | avaliacaoSent: ${session.avaliacaoSent}`);
-
 
       const shouldCheckInactivity =
         (lastFrom === 'bot' || lastFrom === 'attendee') &&
@@ -310,12 +297,31 @@ class SessionManager {
     console.log(`👨‍💼 ATENDENTE ${userId} enviou mensagem`);
   }
 
-  markClientActivity(userId) {
+  markClientActivityDuringEncerramento(userId) {
     let session = this.sessions.get(userId);
     if (!session) {
       session = this.startSession(userId);
     }
 
+    this.encerramentoFantasmaEnviado.delete(userId);
+
+    session.lastActivity = Date.now();
+    session.inactivityWarningSent = false;
+    session.avaliacaoSent = false;
+    session.inatividadeSentTime = null;
+    session.waitingClientResponse = false;
+    this.setLastMessageFrom(userId, 'client');
+
+    this.setLastActiveClient(userId);
+
+    console.log(`💬✅ CLIENTE ${userId} RESPONDEU DURANTE ENCERRAMENTO - CANCELANDO INATIVIDADE`);
+  }
+
+  markClientActivity(userId) {
+    let session = this.sessions.get(userId);
+    if (!session) {
+      session = this.startSession(userId);
+    }
 
     this.encerramentoFantasmaEnviado.delete(userId);
 
@@ -433,7 +439,8 @@ class SessionManager {
       isInEncerramentoFlow: false,
       hasContactedAttendee: false,
       hasUsedService: false,
-      encerramentoFlow: null
+      encerramentoFlow: null,
+      encerramentoFantasmaSent: false
     };
 
     this.sessions.set(userId, session);
