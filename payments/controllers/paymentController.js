@@ -1,4 +1,4 @@
-const paymentService = require('../services/paymentService');
+import paymentService from "../services/paymentService.js";
 
 class PaymentController {
     async createPayment(req, res) {
@@ -82,4 +82,4 @@ class PaymentController {
     }
 }
 
-module.exports = new PaymentController();
+export default new PaymentController();
