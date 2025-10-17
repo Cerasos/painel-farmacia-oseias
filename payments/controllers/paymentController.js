@@ -1,78 +1,48 @@
 import paymentService from "../services/paymentService.js";
 
-class PaymentController {
-  async createPayment(req, res) {
-    try {
-      const { customerId, amount, description, paymentMethod } = req.body;
-      const payment = await paymentService.processPayment({
-        customerId,
-        amount,
-        description,
-        paymentMethod,
-      });
-
-      res.json({
-        success: true,
-        data: payment,
-        message: "Pagamento processado com sucesso",
-      });
-    } catch (error) {
-      console.error("Erro no controller de pagamento:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
+const createPayment = async (req, res) => {
+  try {
+    const payment = await paymentService.processPayment(req.body);
+    res.json({ success: true, data: payment });
+  } catch (error) {
+    console.error("Erro ao criar pagamento:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
+};
 
-  async getPaymentStatus(req, res) {
-    try {
-      const { paymentId } = req.params;
-      const payment = await paymentService.getPaymentStatus(paymentId);
-
-      res.json({ success: true, data: payment });
-    } catch (error) {
-      console.error("Erro ao buscar status:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
+const getPaymentStatus = async (req, res) => {
+  try {
+    const payment = await paymentService.getPaymentStatus(req.params.paymentId);
+    res.json({ success: true, data: payment });
+  } catch (error) {
+    console.error("Erro ao buscar status:", error);
+    res.status(404).json({ success: false, message: error.message });
   }
+};
 
-  async confirmPayment(req, res) {
-    try {
-      const { paymentId } = req.body;
-      const payment = await paymentService.confirmPayment(paymentId);
-
-      res.json({
-        success: true,
-        data: payment,
-        message: "Pagamento confirmado com sucesso",
-      });
-    } catch (error) {
-      console.error("Erro ao confirmar pagamento:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
+const confirmPayment = async (req, res) => {
+  try {
+    const payment = await paymentService.confirmPayment(req.body.paymentId);
+    res.json({ success: true, data: payment });
+  } catch (error) {
+    console.error("Erro ao confirmar pagamento:", error);
+    res.status(404).json({ success: false, message: error.message });
   }
+};
 
-  async getCustomerPayments(req, res) {
-    try {
-      const { customerId } = req.params;
-      const payments = await paymentService.getCustomerPayments(customerId);
-
-      res.json({ success: true, data: payments });
-    } catch (error) {
-      console.error("Erro ao buscar pagamentos:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
+const getCustomerPayments = async (req, res) => {
+  try {
+    const payments = await paymentService.getCustomerPayments(req.params.customerId);
+    res.json({ success: true, data: payments });
+  } catch (error) {
+    console.error("Erro ao buscar pagamentos do cliente:", error);
+    res.status(404).json({ success: false, message: error.message });
   }
+};
 
-  async generatePixQRCode(req, res) {
-    try {
-      const { paymentId } = req.params;
-      const pixData = await paymentService.generatePixQRCode(paymentId);
-
-      res.json({ success: true, data: pixData });
-    } catch (error) {
-      console.error("Erro ao gerar QR Code PIX:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  }
-}
-
-export default new PaymentController();
+export default {
+  createPayment,
+  getPaymentStatus,
+  confirmPayment,
+  getCustomerPayments,
+};
