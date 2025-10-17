@@ -1,4 +1,4 @@
-const validatePayment = (req, res, next) => {
+export const validatePayment = (req, res, next) => {
     const { amount, customerId } = req.body;
 
     if (!customerId) {
@@ -25,12 +25,7 @@ const validatePayment = (req, res, next) => {
     next();
 };
 
-const paymentLogger = (req, res, next) => {
+export const paymentLogger = (req, res, next) => {
     console.log(`[PAYMENT] ${new Date().toISOString()} - ${req.method} ${req.path} - Cliente: ${req.body.customerId || 'N/A'}`);
     next();
-};
-
-module.exports = {
-    validatePayment,
-    paymentLogger
 };
