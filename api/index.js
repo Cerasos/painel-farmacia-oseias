@@ -1,5 +1,4 @@
 import express from "express";
-import serverless from "serverless-http";
 
 import webhookRoutes from "../routes/webhook.js";
 import apiRoutes from "../routes/api.js";
@@ -16,4 +15,7 @@ app.use("/uazapi", uazapiRoutes);
 app.use("/payments", paymentRoutes.default);
 app.use("/", painelRoutes);
 
-export default serverless(app);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
