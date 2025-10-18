@@ -4,6 +4,7 @@ import apiRoutes from "./routes/api.js";
 import uazapiRoutes from "./routes/uazapi.js";
 import painelRoutes from "./routes/painel.js";
 import * as paymentRoutes from "./payments/routes/paymentRoutes.js";
+import serverless from "serverless-http";
 
 const app = express();
 app.use(express.json());
@@ -14,4 +15,4 @@ app.use("/uazapi", uazapiRoutes);
 app.use("/payments", paymentRoutes.default);
 app.use("/", painelRoutes);
 
-export default app;
+export default serverless(app);
